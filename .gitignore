@@ -142,6 +142,7 @@ $RECYCLE.BIN/
 .nfs*
 
 # Local-only / personal build files (kept out of public repo)
+ANALISIS.md
 sign.bat
 test_size.py
 make_icon.py

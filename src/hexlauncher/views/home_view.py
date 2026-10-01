@@ -12,6 +12,7 @@ import tkinter
 
 import customtkinter as ctk
 
+from src.hexlauncher.i18n import tr
 from src.hexlauncher.palette import (
     BG,
     CARD,
@@ -65,7 +66,7 @@ class HomeView(ctk.CTkFrame):
 
         Badge(
             tag_row,
-            text="MINECRAFT EDITION",
+            text=tr("EDICIÓN MINECRAFT"),
             fg_color=CYAN_GLOW,
             text_color=CYAN,
             border_color=CYAN_DIM,
@@ -75,7 +76,7 @@ class HomeView(ctk.CTkFrame):
 
         ctk.CTkLabel(
             left_hero,
-            text="Experiencia optimizada, minimalista y de alto rendimiento para Minecraft.",
+            text=tr("Experiencia optimizada, minimalista y de alto rendimiento para Minecraft."),
             font=("Segoe UI", 12),
             text_color=MUTED_LIGHT,
         ).pack(anchor="w", pady=(0, 10))
@@ -84,13 +85,13 @@ class HomeView(ctk.CTkFrame):
         pills_row = tkinter.Frame(left_hero, bg=CARD)
         pills_row.pack(anchor="w")
 
-        Badge(pills_row, text="⚡ Fabric & Forge Ready", fg_color=CARD_LIGHT, text_color=SUCCESS).pack(
+        Badge(pills_row, text=tr("⚡ Fabric & Forge Listos"), fg_color=CARD_LIGHT, text_color=SUCCESS).pack(
             side="left", padx=(0, 8)
         )
         Badge(pills_row, text="☕ Adoptium Java 21 LTS", fg_color=CARD_LIGHT, text_color=MUTED_LIGHT).pack(
             side="left", padx=(0, 8)
         )
-        Badge(pills_row, text="📦 Modrinth Integrado", fg_color=CARD_LIGHT, text_color=PURPLE).pack(
+        Badge(pills_row, text=tr("📦 Modrinth Integrado"), fg_color=CARD_LIGHT, text_color=PURPLE).pack(
             side="left"
         )
 
@@ -102,8 +103,8 @@ class HomeView(ctk.CTkFrame):
         self.card_version = StatCard(
             stats_container,
             icon="🎮",
-            title="Versión Actual",
-            value=self.launcher.version_var.get() or "Cargando…",
+            title=tr("Versión Actual"),
+            value=self.launcher.version_var.get() or tr("Cargando…"),
             subtitle=f"Loader: {self.launcher.loader_var.get()}",
             accent_color=CYAN,
         )
@@ -114,9 +115,9 @@ class HomeView(ctk.CTkFrame):
         self.card_ram = StatCard(
             stats_container,
             icon="⚡",
-            title="Memoria RAM",
-            value=f"{ram_gb} GB Asignados",
-            subtitle="Auto-configurado para juego suave",
+            title=tr("Memoria RAM"),
+            value=tr("{ram} GB Asignados").format(ram=ram_gb),
+            subtitle=tr("Auto-configurado para juego suave"),
             accent_color=SUCCESS,
         )
         self.card_ram.pack(side="left", fill="both", expand=True, padx=4)
@@ -125,9 +126,9 @@ class HomeView(ctk.CTkFrame):
         self.card_mods = StatCard(
             stats_container,
             icon="🧩",
-            title="Mods Activos",
+            title=tr("Mods Activos"),
             value="0 Mods",
-            subtitle="Haz clic en 'Mods' para buscar",
+            subtitle=tr("Haz clic en 'Mods' para buscar"),
             accent_color=PURPLE,
         )
         self.card_mods.pack(side="left", fill="both", expand=True, padx=(4, 0))
@@ -149,12 +150,12 @@ class HomeView(ctk.CTkFrame):
         tips_title_row.pack(fill="x", padx=16, pady=(14, 8))
         ctk.CTkLabel(
             tips_title_row,
-            text="💡 CONSEJOS DE RENDIMIENTO",
+            text=tr("💡 CONSEJOS DE RENDIMIENTO"),
             font=("Segoe UI", 11, "bold"),
             text_color=CYAN,
         ).pack(side="left")
 
-        tips_text = (
+        tips_text = tr(
             "• Selecciona Fabric e instala Sodium + Lithium desde la pestaña 'Mods' para mejorar tus FPS.\n"
             "• Para soporte de Shaders: Agrega Iris Shaders (compatible con tus paquetes Sodium favoritos).\n"
             "• Asignación recomendada: 4 a 6 GB de RAM para evitar sobrecargar el recolector de Java.\n"
@@ -182,7 +183,7 @@ class HomeView(ctk.CTkFrame):
         actions_title_row.pack(fill="x", padx=16, pady=(14, 8))
         ctk.CTkLabel(
             actions_title_row,
-            text="📁 ACCESOS RÁPIDOS",
+            text=tr("📁 ACCESOS RÁPIDOS"),
             font=("Segoe UI", 11, "bold"),
             text_color=WHITE,
         ).pack(side="left")
@@ -199,28 +200,28 @@ class HomeView(ctk.CTkFrame):
 
         ctk.CTkButton(
             actions_card,
-            text="📂  Carpeta .minecraft (HexFiles)",
+            text=tr("📂  Carpeta .minecraft (HexFiles)"),
             command=lambda: self._open_path(MC_DIR),
             **btn_style,
         ).pack(fill="x", padx=14, pady=3)
 
         ctk.CTkButton(
             actions_card,
-            text="🧩  Carpeta de Mods",
+            text=tr("🧩  Carpeta de Mods"),
             command=self.launcher._open_mods_folder,
             **btn_style,
         ).pack(fill="x", padx=14, pady=3)
 
         ctk.CTkButton(
             actions_card,
-            text="☕  Carpeta Java 21 (HexJDK)",
+            text=tr("☕  Carpeta Java 21 (HexJDK)"),
             command=lambda: self._open_path(JAVA_DIR),
             **btn_style,
         ).pack(fill="x", padx=14, pady=3)
 
         ctk.CTkButton(
             actions_card,
-            text="📋  Ver Registros / Logs",
+            text=tr("📋  Ver Registros / Logs"),
             command=lambda: self._open_path(LOGS_DIR),
             **btn_style,
         ).pack(fill="x", padx=14, pady=3)
@@ -242,13 +243,13 @@ class HomeView(ctk.CTkFrame):
         v = self.launcher.version_var.get()
         loader = self.launcher.loader_var.get()
         self.card_version.update_card(
-            value=v if v else "Cargando…",
+            value=v if v else tr("Cargando…"),
             subtitle=f"Loader: {loader}",
         )
         ram = self.launcher.settings.get("ram_gb") or 4
         self.card_ram.update_card(
-            value=f"{ram} GB Asignados",
-            subtitle="Configuración óptima" if 4 <= ram <= 8 else "Personalizada",
+            value=tr("{ram} GB Asignados").format(ram=ram),
+            subtitle=tr("Configuración óptima") if 4 <= ram <= 8 else tr("Personalizada"),
         )
 
         # Count mods
@@ -257,7 +258,7 @@ class HomeView(ctk.CTkFrame):
             count = sum(1 for f in os.listdir(path) if f.lower().endswith(".jar"))
             self.card_mods.update_card(
                 value=f"{count} Mod{'s' if count != 1 else ''}",
-                subtitle=f"En {loader} {v}",
+                subtitle=tr("En {loader} {version}").format(loader=loader, version=v),
             )
         except Exception:
-            self.card_mods.update_card(value="0 Mods", subtitle="Carpeta vacía")
+            self.card_mods.update_card(value="0 Mods", subtitle=tr("Carpeta vacía"))

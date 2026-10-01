@@ -7,6 +7,7 @@ import tkinter.filedialog
 import customtkinter as ctk
 import psutil
 
+from src.hexlauncher.i18n import refresh_language, tr
 from src.hexlauncher.palette import (
     BG,
     BORDER,
@@ -38,6 +39,25 @@ class SettingsView(ctk.CTkFrame):
         )
         scroll.pack(fill="both", expand=True, padx=16, pady=(8, 8))
 
+        language_card = ctk.CTkFrame(scroll, fg_color=CARD, corner_radius=12)
+        language_card.pack(fill="x", pady=(0, 12))
+        ctk.CTkLabel(language_card, text=tr("Idioma"), text_color=CYAN, font=("Segoe UI", 12, "bold")).pack(
+            side="left", padx=16, pady=14
+        )
+        self.language_var = ctk.StringVar(value=self.launcher.settings.get("language"))
+        self.language_switch = ctk.CTkSwitch(
+            language_card,
+            text="EN / ES",
+            variable=self.language_var,
+            offvalue="en",
+            onvalue="es",
+            command=self._change_language,
+            progress_color=CYAN,
+            button_color=WHITE,
+            text_color=TEXT_MAIN,
+        )
+        self.language_switch.pack(side="right", padx=16, pady=14)
+
         # ── 1. RAM Allocation Card ────────────────────────────────────────────
         ram_card = ctk.CTkFrame(scroll, fg_color=CARD, border_color=BORDER, border_width=1, corner_radius=12)
         ram_card.pack(fill="x", pady=(0, 12))
@@ -59,7 +79,7 @@ class SettingsView(ctk.CTkFrame):
 
         Badge(
             ram_header,
-            text=f"RAM del Sistema: {total_ram_gb} GB",
+            text=tr("RAM del Sistema: {ram} GB").format(ram=total_ram_gb),
             fg_color=CARD_LIGHT,
             text_color=MUTED_LIGHT,
         ).pack(side="right")
@@ -254,10 +274,16 @@ class SettingsView(ctk.CTkFrame):
             self.ram_note.configure(
                 text="Alto: Asegúrate de tener suficiente RAM libre en Windows.", text_color=MUTED_LIGHT
             )
+        refresh_language(self)
+
+    def _change_language(self):
+        if not self.launcher.change_language(self.language_var.get()):
+            self.language_var.set(self.launcher.settings.get("language"))
+            self.saved_feedback.configure(text=tr("No se pudieron guardar los ajustes."), text_color=WARN)
 
     def _pick_java(self):
         filename = tkinter.filedialog.askopenfilename(
-            title="Seleccionar ejecutable java.exe",
+            title=tr("Seleccionar ejecutable java.exe"),
             filetypes=[("Java Executable", "java.exe"), ("All Files", "*.*")],
         )
         if filename:
@@ -271,12 +297,12 @@ class SettingsView(ctk.CTkFrame):
             self.launcher.settings.set("custom_java_path", self.java_path_var.get().strip())
             self.launcher.settings.set("close_on_launch", self.close_on_launch_var.get())
             if not self.launcher.settings.save():
-                self.saved_feedback.configure(text="No se pudieron guardar los ajustes.", text_color=WARN)
+                self.saved_feedback.configure(text=tr("No se pudieron guardar los ajustes."), text_color=WARN)
                 return
         except (ValueError, OSError) as exc:
             self.saved_feedback.configure(text=str(exc), text_color=WARN)
             return
 
-        self.saved_feedback.configure(text="✓ Ajustes guardados correctamente", text_color=SUCCESS)
+        self.saved_feedback.configure(text=tr("✓ Ajustes guardados correctamente"), text_color=SUCCESS)
         self.launcher.after(3000, lambda: self.saved_feedback.configure(text=""))
         self.launcher.home_view.refresh_stats()

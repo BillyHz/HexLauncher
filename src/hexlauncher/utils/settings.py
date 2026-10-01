@@ -12,6 +12,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 DEFAULTS: dict[str, Any] = {
+    "language": "en",
     "username": "",
     "last_version": "",
     "last_loader": "Vanilla",
@@ -77,6 +78,8 @@ def _valid(key: str, value: Any) -> bool:
         return False
     if key == "ram_gb":
         return 1 <= value <= 32
+    if key == "language":
+        return value in {"en", "es"}
     if key == "last_loader":
         return value in {"Vanilla", "Fabric", "Forge", "NeoForge"}
     if key == "window_geometry":

@@ -21,6 +21,7 @@ import customtkinter as ctk
 import requests
 from PIL import Image
 
+from src.hexlauncher.i18n import tr
 from src.hexlauncher.palette import (
     BG,
     BORDER,
@@ -106,7 +107,7 @@ class CTkScrollableDropdown(ctk.CTkFrame):
         self.search_var = ctk.StringVar()
         self.search_entry = ctk.CTkEntry(
             search_frame,
-            placeholder_text="🔍 Filtrar versión…",
+            placeholder_text=tr("🔍 Filtrar versión…"),
             textvariable=self.search_var,
             height=28,
             corner_radius=6,
@@ -124,7 +125,7 @@ class CTkScrollableDropdown(ctk.CTkFrame):
 
         self.count_label = ctk.CTkLabel(
             meta_row,
-            text=f"{len(self.all_values)} versiones",
+            text=tr("{count} versiones").format(count=len(self.all_values)),
             font=("Segoe UI", 9),
             text_color=MUTED,
             anchor="w",
@@ -164,7 +165,7 @@ class CTkScrollableDropdown(ctk.CTkFrame):
         if not values:
             ctk.CTkLabel(
                 self.scroll,
-                text="No hay versiones coincidentes",
+                text=tr("No hay versiones coincidentes"),
                 font=("Segoe UI", 10),
                 text_color=MUTED,
             ).pack(pady=20)
@@ -204,11 +205,15 @@ class CTkScrollableDropdown(ctk.CTkFrame):
     def _filter_items(self):
         query = self.search_var.get().strip().lower()
         if not query:
-            self.count_label.configure(text=f"{len(self.all_values)} versiones")
+            self.count_label.configure(text=tr("{count} versiones").format(count=len(self.all_values)))
             self._populate_items(self.all_values)
         else:
             filtered = [v for v in self.all_values if query in v.lower()]
-            self.count_label.configure(text=f"{len(filtered)} de {len(self.all_values)} versiones")
+            self.count_label.configure(
+                text=tr("{count} de {total} versiones").format(
+                    count=len(filtered), total=len(self.all_values)
+                )
+            )
             self._populate_items(filtered)
 
     def _on_select(self, value: str):
@@ -249,7 +254,7 @@ class VersionSelector(ctk.CTkOptionMenu):
         super().__init__(
             parent,
             variable=variable,
-            values=values or ["Cargando…"],
+            values=values or [tr("Cargando…")],
             command=self._on_selected,
             width=width,
             height=height,
@@ -272,7 +277,7 @@ class VersionSelector(ctk.CTkOptionMenu):
             return
 
         values = self._values
-        if not values or values == ["Cargando…"]:
+        if not values or values in (["Cargando…"], ["Loading…"]):
             return
 
         self._active_dropdown = CTkScrollableDropdown(

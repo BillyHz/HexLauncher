@@ -7,6 +7,7 @@ import tkinter
 
 import customtkinter as ctk
 
+from src.hexlauncher.i18n import tr
 from src.hexlauncher.palette import (
     BG,
     BORDER,
@@ -61,7 +62,7 @@ class BottomBar(ctk.CTkFrame):
 
         self.status_label = ctk.CTkLabel(
             status_row,
-            text="Iniciando…",
+            text=tr("Iniciando…"),
             font=("Segoe UI", 10),
             text_color=MUTED_LIGHT,
             anchor="w",
@@ -87,7 +88,7 @@ class BottomBar(ctk.CTkFrame):
 
         ctk.CTkLabel(
             user_top,
-            text="CUENTA / APODO",
+            text=tr("CUENTA / APODO"),
             font=("Segoe UI", 9, "bold"),
             text_color=MUTED,
         ).pack(side="left")
@@ -103,7 +104,7 @@ class BottomBar(ctk.CTkFrame):
         self.username_var = ctk.StringVar()
         self.username_input = ctk.CTkEntry(
             user_input_frame,
-            placeholder_text="Tu nickname…",
+            placeholder_text=tr("Tu nickname…"),
             textvariable=self.username_var,
             width=160,
             height=32,
@@ -131,14 +132,14 @@ class BottomBar(ctk.CTkFrame):
 
         ctk.CTkLabel(
             mid_top,
-            text="MOD LOADER & VERSIÓN",
+            text=tr("MOD LOADER & VERSIÓN"),
             font=("Segoe UI", 9, "bold"),
             text_color=MUTED,
         ).pack(side="left", padx=(0, 10))
 
         self.installed_badge = Badge(
             mid_top,
-            text="Verificando…",
+            text=tr("Verificando…"),
             fg_color=BG,
             text_color=MUTED,
             font_size=9,
@@ -172,7 +173,7 @@ class BottomBar(ctk.CTkFrame):
         self.version_combo = VersionSelector(
             combo_row,
             variable=self.launcher.version_var,
-            values=["Cargando…"],
+            values=[tr("Cargando…")],
             command=self._on_version_changed,
             height=32,
         )
@@ -199,7 +200,7 @@ class BottomBar(ctk.CTkFrame):
 
         self.play_button = ctk.CTkButton(
             right_frame,
-            text="▶   ENTRAR AL JUEGO",
+            text=tr("▶   ENTRAR AL JUEGO"),
             command=self.launcher._start_launch_thread,
             fg_color=CYAN,
             hover_color=CYAN_H,
@@ -234,11 +235,11 @@ class BottomBar(ctk.CTkFrame):
             self.set_play_enabled(False)
             return False
         if not self.USERNAME_RE.match(name):
-            self.user_feedback.configure(text="✗ 3-16 caracteres válidos", text_color=WARN)
+            self.user_feedback.configure(text=tr("✗ 3-16 caracteres válidos"), text_color=WARN)
             self.set_play_enabled(False)
             return False
 
-        self.user_feedback.configure(text="✓ Listo", text_color=SUCCESS)
+        self.user_feedback.configure(text=tr("✓ Listo"), text_color=SUCCESS)
         self.avatar.load_avatar(name)
         self.set_play_enabled(True)
         return True
@@ -259,7 +260,7 @@ class BottomBar(ctk.CTkFrame):
         """Keep the stop action accessible while Minecraft is running."""
         if is_running:
             self.play_button.configure(
-                text="■   DETENER",
+                text=tr("■   DETENER"),
                 command=self.launcher._kill_game,
                 fg_color=DANGER,
                 hover_color=DANGER_H,
@@ -268,7 +269,7 @@ class BottomBar(ctk.CTkFrame):
             )
         else:
             self.play_button.configure(
-                text="▶   ENTRAR AL JUEGO",
+                text=tr("▶   ENTRAR AL JUEGO"),
                 command=self.launcher._start_launch_thread,
                 fg_color=CYAN,
                 hover_color=CYAN_H,
@@ -280,17 +281,17 @@ class BottomBar(ctk.CTkFrame):
     def update_installed_status(self, is_installed: bool, version_id: str):
         if is_installed:
             self.installed_badge.configure_badge(
-                text="✔ Instalado",
+                text=tr("✔ Instalado"),
                 fg_color=CARD_LIGHT,
                 text_color=SUCCESS,
             )
             if self.launcher._mc_process is None:
-                self.play_button.configure(text="▶   ENTRAR AL JUEGO")
+                self.play_button.configure(text=tr("▶   ENTRAR AL JUEGO"))
         else:
             self.installed_badge.configure_badge(
-                text="⬇ Descarga requerida",
+                text=tr("⬇ Descarga requerida"),
                 fg_color=CARD_LIGHT,
                 text_color=WARN,
             )
             if self.launcher._mc_process is None:
-                self.play_button.configure(text="⬇   INSTALAR Y JUGAR")
+                self.play_button.configure(text=tr("⬇   INSTALAR Y JUGAR"))

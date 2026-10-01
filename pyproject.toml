@@ -1,6 +1,6 @@
 [project]
 name = "hexlauncher"
-version = "0.7.0"
+version = "0.7.0-beta.1"
 description = "HexLauncher - minimalist, dependency-light Minecraft launcher with mod loader support."
 requires-python = ">=3.11"
 dependencies = [

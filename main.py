@@ -25,6 +25,7 @@ import customtkinter as ctk
 import minecraft_launcher_lib
 
 from src.hexlauncher.bottom_bar import BottomBar
+from src.hexlauncher.i18n import refresh_language, set_language, tr, translate_displayed
 from src.hexlauncher.loader_folders import LOADER_FOLDERS
 from src.hexlauncher.palette import (
     BG,
@@ -71,6 +72,7 @@ class HexLauncher(ctk.CTk):
         self._queue_after_id = None
         self.queue = queue.Queue()
         self.settings = Settings(BASE_PATH)
+        set_language(self.settings.get("language"))
         self._mc_process: subprocess.Popen | None = None
         self._releases: list[str] = []
         self._versions_request_id = 0
@@ -102,12 +104,13 @@ class HexLauncher(ctk.CTk):
                 logger.debug("iconbitmap failed", exc_info=True)
 
         self.loader_var = ctk.StringVar(value=self.settings.get("last_loader") or "Vanilla")
-        self.version_var = ctk.StringVar(value="Cargando…")
+        self.version_var = ctk.StringVar(value=tr("Cargando…"))
 
         self._is_launching = False
         self._mc_process = None
 
         self._build_ui()
+        refresh_language(self.main_container)
 
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._queue_after_id = super().after(50, self._process_queue)
@@ -123,6 +126,7 @@ class HexLauncher(ctk.CTk):
                 callback = self.queue.get_nowait()
                 try:
                     callback()
+                    refresh_language(self.main_container)
                 except Exception as e:
                     logger.error("Error executing queued callback: %s", e)
         except queue.Empty:
@@ -168,7 +172,7 @@ class HexLauncher(ctk.CTk):
 
         Badge(
             brand_frame,
-            text="v0.7.0",
+            text="v0.7.0-beta.1",
             fg_color=CARD_LIGHT,
             text_color=MUTED_LIGHT,
             font_size=9,
@@ -262,6 +266,20 @@ class HexLauncher(ctk.CTk):
             self.home_view.refresh_stats()
         elif view_name == "mods":
             self.modrinth_view.update_filter_badge()
+        refresh_language(self.main_container)
+
+    def change_language(self, language: str) -> bool:
+        previous = self.settings.get("language")
+        self.settings.set("language", language)
+        if not self.settings.save():
+            self.settings.set("language", previous)
+            return False
+        set_language(language)
+        self.settings_view.language_var.set(language)
+        self.modrinth_view.refresh_instances()
+        self.version_var.set(translate_displayed(self.version_var.get()))
+        refresh_language(self.main_container)
+        return True
 
     def _open_dir(self, path: str):
         os.makedirs(path, exist_ok=True)
@@ -314,7 +332,9 @@ class HexLauncher(ctk.CTk):
         loader_name = self.loader_var.get().lower()
         instance = self.settings.get("active_instance_dir") or ""
         releases = list(self._releases)
-        self.bottom_bar.status_label.configure(text=f"Filtrando versiones para {loader_name.capitalize()}…")
+        self.bottom_bar.status_label.configure(
+            text=tr("Filtrando versiones para {loader}…").format(loader=loader_name.capitalize())
+        )
 
         def task():
             try:
@@ -354,9 +374,9 @@ class HexLauncher(ctk.CTk):
         threading.Thread(target=task, daemon=True).start()
 
     def _populate_menu(self, versions: list[str]):
-        self.bottom_bar.version_combo.configure(values=versions or ["No se encontraron versiones"])
+        self.bottom_bar.version_combo.configure(values=versions or [tr("No se encontraron versiones")])
         if not versions:
-            self.version_var.set("No se encontraron versiones")
+            self.version_var.set(tr("No se encontraron versiones"))
         if versions:
             saved = self.settings.get("last_version") or ""
             chosen = saved if saved in versions else versions[0]
@@ -428,7 +448,9 @@ class HexLauncher(ctk.CTk):
             path = Path(self._game_directory(), "mods")
             path.mkdir(parents=True, exist_ok=True)
             return str(path)
-        if loader == "Vanilla" or version in ("Cargando…", "No se encontraron versiones", ""):
+        if loader == "Vanilla" or version in (
+            "Cargando…", "Loading…", "No se encontraron versiones", "No versions found", ""
+        ):
             return MODS_DIR
         folder = LOADER_FOLDERS.get(loader.lower(), loader)
         path = safe_path(MODS_DIR, f"{folder}/{version}")
@@ -469,18 +491,18 @@ class HexLauncher(ctk.CTk):
 
     def _start_launch_thread(self):
         if self._is_launching or self._mc_process is not None or self.modrinth_view._busy:
-            self.bottom_bar.status_label.configure(text="Espera a que termine la operación actual.")
+            self.bottom_bar.status_label.configure(text=tr("Espera a que termine la operación actual."))
             return
         if not self.bottom_bar._validate_username():
             self.bottom_bar.status_label.configure(
-                text="⚠ Ingresa un apodo válido (3-16 caracteres alfanuméricos)."
+                text=tr("⚠ Ingresa un apodo válido (3-16 caracteres alfanuméricos).")
             )
             return
 
         user = self.bottom_bar.username_input.get().strip()
         version = self.version_var.get()
-        if version in ("Cargando…", "No se encontraron versiones", ""):
-            self.bottom_bar.status_label.configure(text="⚠ Selecciona una versión válida.")
+        if version in ("Cargando…", "Loading…", "No se encontraron versiones", "No versions found", ""):
+            self.bottom_bar.status_label.configure(text=tr("⚠ Selecciona una versión válida."))
             return
 
         loader = self.loader_var.get().lower()
@@ -674,7 +696,7 @@ class HexLauncher(ctk.CTk):
         if process is None or process.poll() is not None:
             return
         self._stop_requested = True
-        self.bottom_bar.status_label.configure(text="Deteniendo Minecraft…")
+        self.bottom_bar.status_label.configure(text=tr("Deteniendo Minecraft…"))
 
         def stop():
             try:

@@ -35,7 +35,7 @@ def install_jdk(java_dir: str | Path, progress_callback=None, status_callback=No
     if executable.is_file():
         return str(executable)
     http = transport or requests
-    headers = {"User-Agent": "BillyHz/HexLauncher/0.7.0 (https://github.com/BillyHz/HexLauncher)"}
+    headers = {"User-Agent": "BillyHz/HexLauncher/0.7.0-beta.1 (https://github.com/BillyHz/HexLauncher)"}
 
     def request(url, **kwargs):
         if urlparse(url).scheme != "https":

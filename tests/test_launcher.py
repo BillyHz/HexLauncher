@@ -1,5 +1,7 @@
 import pytest
 
+from src.hexlauncher.i18n import tr
+
 
 @pytest.fixture(scope="module")
 def launcher_app(app_root):
@@ -51,17 +53,17 @@ def test_bottom_bar_validation(launcher_app):
 def test_bottom_bar_running_state_toggle(launcher_app):
     bar = launcher_app.bottom_bar
     bar.set_running_state(True)
-    assert "DETENER" in bar.play_button.cget("text")
+    assert bar.play_button.cget("text") == tr("■   DETENER")
     assert bar.play_button.cget("state") == "normal"
 
     bar.set_running_state(False)
-    assert "ENTRAR AL JUEGO" in bar.play_button.cget("text") or "JUGAR" in bar.play_button.cget("text")
+    assert bar.play_button.cget("text") == tr("▶   ENTRAR AL JUEGO")
 
 
 def test_installed_status_update(launcher_app):
     bar = launcher_app.bottom_bar
     bar.update_installed_status(True, "1.21")
-    assert "Instalado" in bar.installed_badge.label.cget("text")
+    assert bar.installed_badge.label.cget("text") == tr("✔ Instalado")
 
     bar.update_installed_status(False, "1.21.4")
-    assert "Descarga" in bar.installed_badge.label.cget("text")
+    assert bar.installed_badge.label.cget("text") == tr("⬇ Descarga requerida")

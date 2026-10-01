@@ -13,6 +13,7 @@ import customtkinter as ctk
 from PIL import Image
 
 from src.hexlauncher.core.modrinth import ModrinthClient, ModrinthError
+from src.hexlauncher.i18n import tr
 from src.hexlauncher.palette import BG, CARD, CARD_LIGHT, CYAN, CYAN_H, MUTED, SUCCESS, WARN, WHITE
 from src.hexlauncher.paths import BASE_PATH
 from src.hexlauncher.widgets import Badge
@@ -45,7 +46,7 @@ class ModrinthView(ctk.CTkFrame):
         ).pack(side="left", padx=8, pady=8)
         ctk.CTkButton(
             controls,
-            text="Importar .mrpack",
+            text=tr("Importar .mrpack"),
             command=self._import_pack,
             fg_color=CYAN,
             hover_color=CYAN_H,
@@ -54,25 +55,25 @@ class ModrinthView(ctk.CTkFrame):
         ).pack(side="left", padx=4)
         ctk.CTkButton(
             controls,
-            text="Mods instalados",
+            text=tr("Mods instalados"),
             command=self.refresh_installed_mods,
             fg_color=CARD_LIGHT,
             width=130,
         ).pack(side="left", padx=4)
-        self.filter_badge = Badge(controls, text="Filtro: —", fg_color=CARD_LIGHT, text_color=CYAN)
+        self.filter_badge = Badge(controls, text=tr("Filtro: —"), fg_color=CARD_LIGHT, text_color=CYAN)
         self.filter_badge.pack(side="right", padx=8)
 
         search = ctk.CTkFrame(self, fg_color=CARD)
         search.pack(fill="x", padx=16, pady=(0, 8))
         self.search_var = ctk.StringVar()
         self.search_input = ctk.CTkEntry(
-            search, textvariable=self.search_var, placeholder_text="Buscar mods o modpacks…", height=34
+            search, textvariable=self.search_var, placeholder_text=tr("Buscar mods o modpacks…"), height=34
         )
         self.search_input.pack(side="left", fill="x", expand=True, padx=8, pady=8)
         self.search_input.bind("<Return>", lambda _: self.do_search())
         self.btn_search = ctk.CTkButton(
             search,
-            text="Buscar",
+            text=tr("Buscar"),
             command=self.do_search,
             fg_color=CYAN,
             hover_color=CYAN_H,
@@ -81,17 +82,21 @@ class ModrinthView(ctk.CTkFrame):
         )
         self.btn_search.pack(side="right", padx=8)
         self.status_label = ctk.CTkLabel(
-            self, text="Busca proyectos o importa un modpack.", anchor="w", text_color=MUTED, wraplength=900
+            self,
+            text=tr("Busca proyectos o importa un modpack."),
+            anchor="w",
+            text_color=MUTED,
+            wraplength=900,
         )
         self.status_label.pack(fill="x", padx=20, pady=4)
         self.progress_bar = ctk.CTkProgressBar(self, progress_color=CYAN, height=5)
         self.progress_bar.set(0)
         self.progress_bar.pack(fill="x", padx=20, pady=(0, 8))
-        self.instance_var = ctk.StringVar(value="Instalación habitual")
+        self.instance_var = ctk.StringVar(value=tr("Instalación habitual"))
         self.instance_menu = ctk.CTkOptionMenu(
             self,
             variable=self.instance_var,
-            values=["Instalación habitual"],
+            values=[tr("Instalación habitual")],
             command=self._select_instance,
             fg_color=CARD_LIGHT,
         )
@@ -126,11 +131,16 @@ class ModrinthView(ctk.CTkFrame):
 
     def _filters(self):
         loader, version = self.launcher.loader_var.get(), self.launcher.version_var.get()
-        if not version or version in ("Cargando…", "No se encontraron versiones"):
-            self._status("Selecciona una versión de Minecraft.", WARN)
+        if not version or version in (
+            "Cargando…",
+            "No se encontraron versiones",
+            tr("Cargando…"),
+            tr("No se encontraron versiones"),
+        ):
+            self._status(tr("Selecciona una versión de Minecraft."), WARN)
             return None
         if loader == "Vanilla" and self.kind_var.get() == "Mods":
-            self._status("Selecciona Fabric, Forge o NeoForge para instalar mods.", WARN)
+            self._status(tr("Selecciona Fabric, Forge o NeoForge para instalar mods."), WARN)
             return None
         return loader, version
 
@@ -149,7 +159,7 @@ class ModrinthView(ctk.CTkFrame):
         self._search_generation += 1
         generation = self._search_generation
         self._clear()
-        self._status(f"Buscando '{query}'…")
+        self._status(tr("Buscando '{query}'…").format(query=query))
 
         def worker():
             try:
@@ -158,7 +168,12 @@ class ModrinthView(ctk.CTkFrame):
                 def render():
                     if generation != self._search_generation:
                         return
-                    self._status(f"{len(hits)} resultado(s) para {loader} {version}", SUCCESS)
+                    self._status(
+                        tr("{count} resultado(s) para {loader} {version}").format(
+                            count=len(hits), loader=loader, version=version
+                        ),
+                        SUCCESS,
+                    )
                     for hit in hits:
                         self._render_mod_card(hit, version, loader, kind, generation)
 
@@ -196,7 +211,7 @@ class ModrinthView(ctk.CTkFrame):
         project = hit.get("project_id") or hit.get("slug")
         ctk.CTkButton(
             card,
-            text="Instalar",
+            text=tr("Instalar"),
             width=85,
             fg_color=CYAN,
             hover_color=CYAN_H,
@@ -240,11 +255,11 @@ class ModrinthView(ctk.CTkFrame):
 
     def _run_install(self, task):
         if self._busy or self.launcher._is_launching or self.launcher._mc_process is not None:
-            self._status("Espera a que termine la instalación o cierra Minecraft.", WARN)
+            self._status(tr("Espera a que termine la instalación o cierra Minecraft."), WARN)
             return
         self._busy = True
         self.progress_bar.set(0)
-        self._status("Preparando instalación y verificando dependencias…", CYAN)
+        self._status(tr("Preparando instalación y verificando dependencias…"), CYAN)
 
         def worker():
             try:
@@ -260,7 +275,7 @@ class ModrinthView(ctk.CTkFrame):
     def _install_failed(self, message):
         self._busy = False
         self.progress_bar.set(0)
-        self._status(f"Error: {message}", WARN)
+        self._status(tr("Error: {message}").format(message=message), WARN)
 
     def _install_finished(self, result):
         self._busy = False
@@ -269,9 +284,11 @@ class ModrinthView(ctk.CTkFrame):
             directory, index = result
             self.refresh_instances()
             self._activate_pack(directory, index)
-            self._status(f"✓ Modpack '{index['name']}' instalado y seleccionado.", SUCCESS)
+            self._status(
+                tr("✓ Modpack '{name}' instalado y seleccionado.").format(name=index["name"]), SUCCESS
+            )
         else:
-            self._status("✓ Mod y dependencias requeridas instalados.", SUCCESS)
+            self._status(tr("✓ Mod y dependencias requeridas instalados."), SUCCESS)
         self.launcher._update_mods_count()
 
     def _install_project(self, project, title, loader, version, kind):
@@ -289,11 +306,11 @@ class ModrinthView(ctk.CTkFrame):
 
             versions = self.client.get_project_versions(project, loader, version)
             if not versions:
-                raise ModrinthError("No hay modpack compatible.")
+                raise ModrinthError(tr("No hay modpack compatible."))
             file = self.client.primary_file(versions[0], ".mrpack")
             hashes = file.get("hashes", {})
             if not (hashes.get("sha512") or hashes.get("sha1")):
-                raise ModrinthError("El modpack no tiene hashes de integridad.")
+                raise ModrinthError(tr("El modpack no tiene hashes de integridad."))
             with tempfile.TemporaryDirectory() as temporary:
                 pack = Path(temporary, "download.mrpack")
                 self.client.download_file(
@@ -312,7 +329,7 @@ class ModrinthView(ctk.CTkFrame):
         if self._busy:
             return
         path = filedialog.askopenfilename(
-            parent=self, title="Importar modpack", filetypes=[("Modrinth modpack", "*.mrpack")]
+            parent=self, title=tr("Importar modpack"), filetypes=[("Modrinth modpack", "*.mrpack")]
         )
         if path:
             self._run_install(lambda: self._install_pack_file(path))
@@ -335,17 +352,18 @@ class ModrinthView(ctk.CTkFrame):
                     self._instances[label] = (str(metadata.parent), index)
                 except (OSError, ValueError, KeyError):
                     logger.warning("Invalid pack metadata: %s", metadata)
-        self.instance_menu.configure(values=["Instalación habitual", *self._instances])
+        self.instance_menu.configure(values=[tr("Instalación habitual"), *self._instances])
         active = self.launcher.settings.get("active_instance_dir")
         chosen = next(
-            (label for label, (path, _) in self._instances.items() if path == active), "Instalación habitual"
+            (label for label, (path, _) in self._instances.items() if path == active),
+            tr("Instalación habitual"),
         )
         self.instance_var.set(chosen)
 
     def _select_instance(self, label):
         if self._busy or self.launcher._is_launching or self.launcher._mc_process is not None:
             self.refresh_instances()
-            self._status("Cierra el juego antes de cambiar de instancia.", WARN)
+            self._status(tr("Cierra el juego antes de cambiar de instancia."), WARN)
             return
         if label in self._instances:
             self._activate_pack(*self._instances[label])
@@ -357,7 +375,7 @@ class ModrinthView(ctk.CTkFrame):
             self.launcher._update_version_list()
             self.update_filter_badge()
             self.launcher._update_mods_count()
-            self._status("Instalación habitual seleccionada.")
+            self._status(tr("Instalación habitual seleccionada."))
 
     def _activate_pack(self, directory, index):
         deps = index["dependencies"]
@@ -378,7 +396,7 @@ class ModrinthView(ctk.CTkFrame):
         self.instance_var.set(
             next(
                 (label for label, (path, _) in self._instances.items() if path == directory),
-                "Instalación habitual",
+                tr("Instalación habitual"),
             )
         )
         self.update_filter_badge()
@@ -393,21 +411,29 @@ class ModrinthView(ctk.CTkFrame):
         loader, version = filters
         try:
             path = Path(self.launcher._mods_folder_for(loader, version))
-            scope = "Instancia activa" if self.launcher.settings.get("active_instance_dir") else "Biblioteca"
+            scope = (
+                tr("Instancia activa")
+                if self.launcher.settings.get("active_instance_dir")
+                else tr("Biblioteca")
+            )
             self._status(f"{scope}: {loader} · {version}")
             for file in sorted(path.glob("*.jar")):
                 row = ctk.CTkFrame(self.results_scroll, fg_color=CARD_LIGHT)
                 row.pack(fill="x", padx=6, pady=4)
                 ctk.CTkLabel(row, text=file.name, text_color=WHITE).pack(side="left", padx=10)
                 ctk.CTkButton(
-                    row, text="Eliminar", width=80, fg_color=CARD, command=lambda p=file: self._delete_mod(p)
+                    row,
+                    text=tr("Eliminar"),
+                    width=80,
+                    fg_color=CARD,
+                    command=lambda p=file: self._delete_mod(p),
                 ).pack(side="right", padx=8, pady=8)
         except (OSError, ValueError, ModrinthError) as exc:
             self._status(str(exc), WARN)
 
     def _delete_mod(self, path):
         if self._busy or self.launcher._is_launching or self.launcher._mc_process is not None:
-            self._status("Cierra el juego antes de modificar los mods.", WARN)
+            self._status(tr("Cierra el juego antes de modificar los mods."), WARN)
             return
         try:
             self.client.uninstall_mod(path.parent, path.name)

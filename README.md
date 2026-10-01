@@ -6,7 +6,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python 3.14](https://img.shields.io/badge/python-3.14-blue.svg)](https://www.python.org/downloads/)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078d4.svg)](https://www.microsoft.com/windows)
-[![Version: 0.7.0](https://img.shields.io/badge/version-0.7.0_alpha-orange.svg)](#)
+[![Version: 0.7.0-beta.1](https://img.shields.io/badge/version-0.7.0--beta.1_beta-orange.svg)](#)
 
 ---
 
@@ -126,6 +126,9 @@ py -3.14 build.py
 ```
 
 ## Development checks
+
+The interface defaults to English. Use the **EN / ES** switch in **Settings**
+to change languages immediately; your selection is saved for the next launch.
 
 Install the development dependencies before running the offline checks:
 

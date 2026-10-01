@@ -9,6 +9,7 @@ import pytest
 
 from main import HexLauncher
 from src.hexlauncher.core.modrinth import ModrinthError
+from src.hexlauncher.i18n import tr
 
 
 def pump(root, condition):
@@ -146,7 +147,7 @@ def test_username_validation_keeps_stop_accessible(app_root):
     try:
         bar.set_play_enabled(False)
         assert bar.play_button.cget("state") == "normal"
-        assert "DETENER" in bar.play_button.cget("text")
+        assert bar.play_button.cget("text") == tr("■   DETENER")
     finally:
         app_root._mc_process = previous
         bar.set_running_state(False)
