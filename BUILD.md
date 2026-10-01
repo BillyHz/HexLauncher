@@ -2,68 +2,66 @@
 
 ## Prerequisites
 
-- Python 3.14 (already installed)
-- PyInstaller: `py -3.14 -m pip install pyinstaller`
-- All project dependencies: `py -3.14 -m pip install -r requirements.txt`
+Use Python 3.14 on Windows with Tcl/Tk installed. From the project root:
 
-## Quick build
+```powershell
+py -3.14 -m pip install -r requirements.txt -r requirements-dev.txt
+```
 
-```bash
+The runtime requirements provide the application dependencies; the development
+requirements add test tools and PyInstaller.
+
+## Checks and build
+
+```powershell
+py -3.14 -m pytest -q
+py -3.14 -m ruff check .
+py -3.14 -m mypy src/hexlauncher/core src/hexlauncher/utils/settings.py
 py -3.14 build.py
 ```
 
-Or on Windows, just double-click `build.bat`.
+The tests use local fixtures for networking and game processes. UI tests require
+a desktop session with Tcl/Tk available. They do not launch Minecraft.
 
-## Output
+`build.py` invokes PyInstaller with the project's `hexlauncher.spec`, keeping
+entry points, assets, hidden imports and output configuration in one place.
+Rebuild with the same command after changing code or dependencies.
 
-The compiled executable is at:
-```
-dist/HexLauncher.exe
-```
+## Output and distribution
 
-## Distribution
+The output is `dist/HexLauncher.exe`. Users can run the executable without
+installing Python. Minecraft and Java downloads still require network access.
 
-The `.exe` is fully standalone — users do NOT need Python installed.
+The launcher stores its data beside the executable:
 
-On first run, the launcher creates these folders next to the `.exe`:
-- `HexFiles/` — Minecraft installation
-- `HexMods/` — Mod library (organized by loader + version)
-- `HexJDK/` — Java runtime
+- `HexFiles/`: usual Minecraft installation.
+- `HexMods/<Loader>/<Version>/`: mod library for the usual installation.
+- `HexInstances/<id>/`: separate modpacks with pinned Minecraft and loader versions.
+- `HexJDK/`: downloaded and verified Java runtime.
+- `logs/`: diagnostic logs.
+- `settings.json`: validated, atomically saved configuration.
 
-## Notes
+For an active pack, additional mods install directly in that instance's `mods/`
+folder. The installed-mods view and folder shortcuts use the selected instance.
+The `.hexmods.json` registry tracks managed versions and required dependencies;
+updates and deletions publish transactionally with rollback on failure.
 
-- Binary size: ~25-30 MB (UPX-compressed)
-- Startup: ~1-2 seconds
-- Tested on Windows 10/11
-
-## Rebuilding
-
-After code changes:
-```bash
-py -3.14 build.py
-```
-
-PyInstaller caches dependencies, so rebuilds are fast (~10 seconds).
+The launcher manages one Minecraft process. **DETENER** remains available while
+it runs. The hide-on-launch setting restores the launcher when the game exits.
 
 ## Troubleshooting
 
-**"Module not found" at runtime**
-Add the missing module to `hiddenimports` in `hexlauncher.spec`.
+**Missing module or asset at runtime**
+
+Inspect the launch logs and update `hiddenimports` or data files in
+`hexlauncher.spec`, then rebuild using `build.py`.
 
 **Icon not showing**
-Ensure `Hex.ico` is in the project root and referenced in the spec.
 
-**Antivirus flags the `.exe` (Windows Defender, etc.)**
+Ensure `Hex.ico` exists in the project root and is included by the specification.
 
-This is endemic to PyInstaller — see [`ANTIVIRUS.md`](./ANTIVIRUS.md) for
-the full guide. Quick fixes:
+**Antivirus flags the executable**
 
-1. **Distribute via GitHub Releases** — usually whitelisted faster
-2. **Report false positive to Microsoft**: https://www.microsoft.com/en-us/wdsi/filesubmission
-3. **Run `sign.bat`** to self-sign (reduces some flags, doesn't bypass SmartScreen)
-4. **For real protection** — get a free OSS cert from Certum or migrate to Nuitka
-
-**`.exe` is too large**
-- Install UPX: https://upx.github.io (already enabled in spec)
-- Strip more modules in `excludes`
-- Consider migrating to Tauri (see `MIGRATION.md`)
+See [ANTIVIRUS.md](ANTIVIRUS.md). Build output and startup behavior depend on the
+Python, dependency and Windows versions; measure the resulting executable rather
+than assuming a fixed binary size or startup time.

@@ -46,6 +46,7 @@ htmlcov/
 # Virtual environments
 venv/
 .venv/
+.venv314/
 env/
 ENV/
 env.bak/
@@ -147,3 +148,5 @@ make_icon.py
 build.bat
 ANTIVIRUS.md
 migration/
+HexInstances/
+settings.json

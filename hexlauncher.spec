@@ -1,50 +1,27 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""
-PyInstaller spec for HexLauncher.
 
-Build with:
-    py -3.14 build.py
-or
-    py -3.14 -m PyInstaller hexlauncher.spec
-"""
 
-block_cipher = None
+from PyInstaller.utils.hooks import collect_data_files
 
 a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('Hex.ico', '.')],
-    hiddenimports=[
-        'minecraft_launcher_lib',
-        'customtkinter',
-        'darkdetect',
-        'requests',
-    ],
+    datas=[('Hex.ico', '.')] + collect_data_files('customtkinter'),
+    hiddenimports=['minecraft_launcher_lib', 'customtkinter', 'darkdetect', 'requests', 'PIL', 'PIL.Image', 'PIL.ImageTk', 'psutil'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[
-        'tkinter.test',
-        'unittest',
-        'pydoc',
-        'doctest',
-        'xml.etree',
-        'xmlrpc',
-        'pytest',
-    ],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
+    excludes=[],
     noarchive=False,
+    optimize=0,
 )
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
-    a.zipfiles,
     a.datas,
     [],
     name='HexLauncher',
@@ -60,5 +37,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='Hex.ico',
+    icon=['Hex.ico'],
 )

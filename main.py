@@ -1,703 +1,764 @@
-# pyrefly: ignore [missing-import]
-import minecraft_launcher_lib
-import subprocess
-import customtkinter as ctk
-import tkinter
-import threading
-import queue
+"""HexLauncher — modern, minimalist, high-performance Minecraft launcher.
+
+Features:
+- Sleek modern TLauncher-inspired bottom dock and tabbed navigation.
+- Integrated Modrinth browser & mod manager.
+- Adoptium OpenJDK 21 LTS automatic installation & SHA-256 verification.
+- Mod loader support: Fabric, Forge, NeoForge, and Vanilla.
+- Live RAM allocation & JVM performance optimization.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
 import os
-import requests
-import zipfile
-import shutil
-import uuid
+import queue
+import subprocess
 import sys
+import threading
+import tkinter
+import uuid
 
-# ── Path logic (works both as .py and compiled .exe) ──────────────────────────
-if getattr(sys, "frozen", False):
-    BASE_PATH  = os.path.dirname(sys.executable)
-    BUNDLE_DIR = getattr(sys, "_MEIPASS", BASE_PATH)
-else:
-    BASE_PATH  = os.path.dirname(os.path.abspath(__file__))
-    BUNDLE_DIR = BASE_PATH
+import customtkinter as ctk
+import minecraft_launcher_lib
 
-def resource_path(rel):
-    return os.path.join(BUNDLE_DIR, rel)
+from src.hexlauncher.bottom_bar import BottomBar
+from src.hexlauncher.loader_folders import LOADER_FOLDERS
+from src.hexlauncher.palette import (
+    BG,
+    CARD,
+    CARD_LIGHT,
+    CYAN,
+    CYAN_DIM,
+    MUTED_LIGHT,
+    TEXT_MAIN,
+)
+from src.hexlauncher.paths import (
+    BASE_PATH,
+    ICON_NAME,
+    JAVA_BIN,
+    JAVA_DIR,
+    LOGS_DIR,
+    MC_DIR,
+    MODS_DIR,
+)
+from src.hexlauncher.utils.settings import Settings
+from src.hexlauncher.views.home_view import HomeView
+from src.hexlauncher.views.modrinth_view import ModrinthView
+from src.hexlauncher.views.settings_view import SettingsView
+from src.hexlauncher.widgets import Badge, NavTabButton
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
-MC_DIR    = os.path.join(BASE_PATH, "HexFiles")
-MODS_DIR  = os.path.join(BASE_PATH, "HexMods")
-JAVA_DIR  = os.path.join(BASE_PATH, "HexJDK")
-JAVA_BIN  = os.path.join(JAVA_DIR, "bin", "java.exe")
-ICON_NAME = resource_path("Hex.ico")
+# Tcl locates its runtime when the first Tk window is created, after imports.
+tcl = os.path.normpath(os.path.join(sys.base_prefix, "tcl"))
+if os.path.isdir(tcl):
+    os.environ.setdefault("TCL_LIBRARY", os.path.normpath(os.path.join(tcl, "tcl8.6")))
+    os.environ.setdefault("TK_LIBRARY", os.path.normpath(os.path.join(tcl, "tk8.6")))
 
-# Ensure HexMods exists with subfolders for organization
-os.makedirs(MODS_DIR, exist_ok=True)
-for loader_name in ["Fabric", "Forge", "NeoForge"]:
-    os.makedirs(os.path.join(MODS_DIR, loader_name), exist_ok=True)
-
-# ── Palette: Cyberpunk Cyan (tech neon) ───────────────────────────────────────
-BG          = "#07090d"        # near-black with cool tint
-CARD        = "#0d1218"        # card surface
-BORDER      = "#1a2530"        # subtle blue-gray border
-CYAN        = "#00e5ff"        # NEON CYAN — primary accent
-CYAN_H      = "#00b8d4"        # hover
-CYAN_DIM    = "#00838f"        # pressed / disabled tint
-MUTED       = "#5a7a8a"        # secondary text (muted blue-gray)
-SUCCESS     = "#00ff88"        # neon green
-WARN        = "#ff9100"        # neon orange
-WHITE       = "#e0f7fa"        # near-white text with cyan tint
-
-# ── Loaders: lower-case id → folder name ─────────────────────────────────────
-LOADER_FOLDERS = {
-    "fabric":   "Fabric",
-    "forge":    "Forge",
-    "neoforge": "NeoForge",
-}
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-def _divider(parent):
-    """Thin horizontal separator."""
-    ctk.CTkFrame(parent, height=1, fg_color=BORDER).pack(fill="x", padx=24, pady=6)
-
-
-class CTkScrollableDropdown(tkinter.Toplevel):
-    """Fixed dropdown using a vanilla tk.Canvas instead of CTkScrollableFrame.
-
-    CTkScrollableFrame has a known sizing bug where the frame grows to fit
-    its content even when pack_propagate(False) is set. Using a plain Canvas
-    with an explicit height gives us a reliable hard cap on visible items.
-    """
-
-    def __init__(self, attach_to, values=None, command=None, **kwargs):
-        super().__init__(takefocus=True)
-        self.attach_to = attach_to
-        self.values = values or []
-        self.command = command
-
-        self.overrideredirect(True)
-        self.attributes("-transparentcolor", "#000001")
-        self.configure(bg="#000001")
-
-        self.transient(self.attach_to.winfo_toplevel())
-        self.update_idletasks()
-
-        x = self.attach_to.winfo_rootx()
-        y = self.attach_to.winfo_rooty() + self.attach_to.winfo_height() + 4
-        width = self.attach_to.winfo_width()
-
-        # Cap visible items so the dropdown never overflows the window
-        item_height = 26
-        max_visible = 4
-        visible_items = min(len(self.values), max_visible)
-
-        top = self.attach_to.winfo_toplevel()
-        combo_bottom_in_win = self.attach_to.winfo_rooty() - top.winfo_rooty() + self.attach_to.winfo_height()
-        available_below = top.winfo_height() - combo_bottom_in_win - 16  # 16px margin
-        max_by_space = max(3, (available_below - 8) // item_height)
-        visible_items = min(visible_items, max_by_space)
-
-        calculated_height = (visible_items * item_height) + 8
-
-        # Outer container - dark with rounded corners and subtle border
-        self.container = ctk.CTkFrame(
-            self,
-            corner_radius=10,
-            border_width=1,
-            border_color=BORDER,
-            fg_color=CARD,
-        )
-        self.container.pack(fill="both", expand=False)
-
-        # Vanilla Canvas with explicit height (good citizen for sizing)
-        self.canvas = tkinter.Canvas(
-            self.container,
-            bg=CARD,
-            highlightthickness=0,
-            bd=0,
-            height=calculated_height - 8,
-        )
-        self.canvas.pack(side="left", fill="both", expand=True, padx=(2, 0), pady=2)
-
-        self.scrollbar = ctk.CTkScrollbar(
-            self.container,
-            orientation="vertical",
-            command=self.canvas.yview,
-            button_color=CYAN,
-            button_hover_color=CYAN_H,
-            width=10,
-        )
-        self.scrollbar.pack(side="right", fill="y", padx=(0, 2), pady=2)
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
-
-        # Inner frame living inside the canvas — buttons go here
-        self.inner_frame = ctk.CTkFrame(self.canvas, fg_color=CARD)
-        self._canvas_window = self.canvas.create_window(
-            0, 0, window=self.inner_frame, anchor="nw"
-        )
-
-        # Populate with version buttons - tech aesthetic
-        self.buttons = []
-        for value in self.values:
-            btn = ctk.CTkButton(
-                self.inner_frame,
-                text=value,
-                anchor="w",
-                height=24,
-                corner_radius=6,
-                fg_color=BG,
-                text_color=WHITE,
-                hover_color=CYAN,
-                border_width=0,
-                font=("Segoe UI", 11),
-                command=lambda val=value: self._on_select(val),
-            )
-            btn.pack(fill="x", pady=1, padx=2)
-            self.buttons.append(btn)
-
-        # Resize inner frame to match canvas width; configure scroll region
-        self.inner_frame.update_idletasks()
-        self.canvas.itemconfigure(self._canvas_window, width=self.canvas.winfo_width())
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        self.canvas.bind("<Configure>", self._on_canvas_resize)
-
-        # Mouse wheel scrolling
-        self.canvas.bind("<MouseWheel>", self._on_mousewheel)
-        self.canvas.bind("<Button-4>", lambda _: self.canvas.yview_scroll(-1, "units"))
-        self.canvas.bind("<Button-5>", lambda _: self.canvas.yview_scroll(1, "units"))
-        for btn in self.buttons:
-            btn.bind("<MouseWheel>", self._on_mousewheel)
-
-        super().geometry(f"{width}x{calculated_height}+{x}+{y}")
-
-        # Global bindings to auto-close
-        self.root = self.attach_to.winfo_toplevel()
-        self._root_click_bind = self.root.bind("<Button-1>", self._check_click_outside, add="+")
-        self._root_configure_bind = self.root.bind("<Configure>", lambda _: self.destroy(), add="+")
-        self.bind("<FocusOut>", lambda _: self.destroy())
-        self.bind("<Escape>", lambda _: self.destroy())
-
-    def _on_canvas_resize(self, event):
-        self.canvas.itemconfigure(self._canvas_window, width=event.width)
-
-    def _on_mousewheel(self, event):
-        delta = -1 * (event.delta // 120) if event.delta else 0
-        if delta:
-            self.canvas.yview_scroll(delta, "units")
-
-    def _on_select(self, value):
-        self.attach_to._just_closed = True
-        self.attach_to.after(200, lambda: setattr(self.attach_to, "_just_closed", False))
-        if self.command:
-            self.command(value)
-        self.destroy()
-
-    def _check_click_outside(self, event):
-        if not self.winfo_exists():
-            return
-
-        x, y = event.x_root, event.y_root
-
-        dx = self.winfo_rootx()
-        dy = self.winfo_rooty()
-        dw = self.winfo_width()
-        dh = self.winfo_height()
-
-        ax = self.attach_to.winfo_rootx()
-        ay = self.attach_to.winfo_rooty()
-        aw = self.attach_to.winfo_width()
-        ah = self.attach_to.winfo_height()
-
-        click_on_combo = (ax <= x <= ax + aw and ay <= y <= ay + ah)
-        click_on_dropdown = (dx <= x <= dx + dw and dy <= y <= dy + dh)
-
-        if not click_on_dropdown:
-            if click_on_combo:
-                self.attach_to._just_closed = True
-                self.attach_to.after(200, lambda: setattr(self.attach_to, "_just_closed", False))
-            self.destroy()
-
-    def destroy(self):
-        try:
-            self.root.unbind("<Button-1>", self._root_click_bind)
-        except Exception:
-            pass
-        try:
-            self.root.unbind("<Configure>", self._root_configure_bind)
-        except Exception:
-            pass
-        super().destroy()
+logging.basicConfig(
+    filename=os.path.join(LOGS_DIR, "launcher.log"),
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("HexLauncher")
 
 
 class HexLauncher(ctk.CTk):
     def __init__(self):
-        self.queue = queue.Queue()
         super().__init__()
-        self._process_queue()
+        self._is_destroyed = False
+        self._queue_after_id = None
+        self.queue = queue.Queue()
+        self.settings = Settings(BASE_PATH)
+        self._mc_process: subprocess.Popen | None = None
+        self._releases: list[str] = []
+        self._versions_request_id = 0
+        self._filter_request_id = 0
+        self._stop_requested = False
+        self._max_progress = 1
+
         self.title("HexLauncher")
-        self.geometry("420x540")
+
+        # Geometry restoration
+        _saved_geom = self.settings.get("window_geometry")
+        if isinstance(_saved_geom, str) and "+" in _saved_geom:
+            try:
+                # Extract the +x+y position part from saved geometry
+                position = _saved_geom[_saved_geom.index("+") :]
+                self.geometry(f"1000x680{position}")
+            except Exception:
+                self.geometry("1000x680")
+        else:
+            self.geometry("1000x680")
+
         self.resizable(False, False)
         self.configure(fg_color=BG)
 
         if os.path.exists(ICON_NAME):
-            try: self.iconbitmap(ICON_NAME)
-            except Exception: pass
+            try:
+                self.iconbitmap(ICON_NAME)
+            except Exception:
+                logger.debug("iconbitmap failed", exc_info=True)
 
-        self._releases: list[str] = []
-        self._max_progress = 1
-        self.loader_var = ctk.StringVar(value="Vanilla")
+        self.loader_var = ctk.StringVar(value=self.settings.get("last_loader") or "Vanilla")
+        self.version_var = ctk.StringVar(value="Cargando…")
+
+        self._is_launching = False
+        self._mc_process = None
 
         self._build_ui()
-        self.after(100, lambda: threading.Thread(target=self._fetch_versions, daemon=True).start())
 
-    def _process_queue(self):
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        self._queue_after_id = super().after(50, self._process_queue)
+        self._initial_refresh_after_id = self.after(100, self._refresh_versions)
+
+    def _process_queue(self, event=None):
+        if getattr(self, "_is_destroyed", False):
+            return
         try:
-            while True:
+            if not self.winfo_exists():
+                return
+            for _ in range(100):
                 callback = self.queue.get_nowait()
                 try:
                     callback()
                 except Exception as e:
-                    print(f"Error executing queued callback: {e}")
+                    logger.error("Error executing queued callback: %s", e)
         except queue.Empty:
             pass
-        super().after(100, self._process_queue)
+        except Exception:
+            pass
+
+        if not self._is_destroyed:
+            self._queue_after_id = super().after(50, self._process_queue)
 
     def after(self, delay, callback, *args):
+        if getattr(self, "_is_destroyed", False):
+            return None
         if threading.current_thread() is threading.main_thread():
             return super().after(delay, callback, *args)
         else:
             if delay == 0:
                 self.queue.put(lambda: callback(*args))
             else:
-                self.queue.put(lambda: super().after(delay, callback, *args))
+                self.queue.put(lambda: self.after(delay, callback, *args))
 
-    # ── UI ────────────────────────────────────────────────────────────────────
+    # ── UI Architecture ───────────────────────────────────────────────────────
 
     def _build_ui(self):
-        # ── Header card ───────────────────────────────────────────────────────
-        header = ctk.CTkFrame(self, fg_color=CARD, corner_radius=0)
-        header.pack(fill="x")
+        self.main_container = tkinter.Frame(self, bg=BG)
+        self.main_container.pack(fill="both", expand=True)
+
+        # ── 1. Top Modern Header Navigation Bar ───────────────────────────────
+        self.header = ctk.CTkFrame(self.main_container, fg_color=CARD, height=52, corner_radius=0)
+        self.header.pack(fill="x", side="top")
+        self.header.pack_propagate(False)
+
+        # Brand / Logo
+        brand_frame = tkinter.Frame(self.header, bg=CARD)
+        brand_frame.pack(side="left", padx=16, pady=8)
 
         ctk.CTkLabel(
-            header, text="HexLauncher",
-            font=("Segoe UI", 22, "bold"), text_color=CYAN
-        ).pack(pady=(18, 2))
+            brand_frame,
+            text="⚡ HEXLAUNCHER",
+            font=("Segoe UI", 14, "bold"),
+            text_color=CYAN,
+        ).pack(side="left", padx=(0, 8))
 
-        ctk.CTkLabel(
-            header, text="Minecraft  ·  No Premium",
-            font=("Segoe UI", 10), text_color=MUTED
-        ).pack(pady=(0, 14))
-
-        # ── Main card ─────────────────────────────────────────────────────────
-        card = ctk.CTkFrame(self, fg_color=CARD, corner_radius=14)
-        card.pack(fill="both", expand=True, padx=20, pady=(14, 0))
-
-        # Username
-        self._field_label(card, "USERNAME")
-        self.username_input = ctk.CTkEntry(
-            card,
-            placeholder_text="Your nickname…",
-            height=34, corner_radius=8,
-            fg_color=BG, border_color=BORDER, border_width=1,
-            text_color=WHITE, placeholder_text_color=MUTED,
-            font=("Segoe UI", 12)
-        )
-        self.username_input.pack(fill="x", padx=16, pady=(3, 10))
-
-        _divider(card)
-
-        # Version
-        self._field_label(card, "VERSION")
-
-        self.version_var = ctk.StringVar(value="Loading…")
-        self.version_combo = ctk.CTkComboBox(
-            card,
-            variable=self.version_var,
-            values=["Loading…"],
-            command=lambda v: (self._check_installed(v), self._update_mods_count()),
-            width=180, height=30, corner_radius=8,
-            fg_color=BG, border_color=BORDER, border_width=1,
-            button_color=CYAN, button_hover_color=CYAN_H,
-            dropdown_fg_color="#0d1218",
-            dropdown_hover_color=CYAN_DIM,
-            dropdown_text_color=WHITE,
-            text_color=WHITE, font=("Segoe UI", 12),
-            dropdown_font=("Segoe UI", 11),
-            state="readonly"
-        )
-        self.version_combo.pack(anchor="w", padx=16, pady=(3, 4))
-        self.version_combo._entry.configure(exportselection=False)
-
-        def custom_open(event=None):
-            try:
-                if getattr(self.version_combo, "_just_closed", False):
-                    return
-
-                active_dropdown = getattr(self.version_combo, "_active_dropdown", None)
-                if active_dropdown and active_dropdown.winfo_exists():
-                    active_dropdown.destroy()
-                    setattr(self.version_combo, "_active_dropdown", None)
-                    return
-
-                values = self.version_combo.cget("values")
-                if not values or values == ["Loading…"]:
-                    return
-
-                setattr(self.version_combo, "_active_dropdown", CTkScrollableDropdown(
-                    attach_to=self.version_combo,
-                    values=values,
-                    command=self.version_combo._dropdown_callback
-                ))
-            except Exception as e:
-                import traceback
-                with open("dropdown_error.log", "w") as f:
-                    traceback.print_exc(file=f)
-                print(f"Error in custom_open: {e}")
-
-        self.version_combo._clicked = custom_open
-
-        # Installed badge
-        self.installed_label = ctk.CTkLabel(
-            card, text="", font=("Segoe UI", 10), text_color=MUTED, anchor="w"
-        )
-        self.installed_label.pack(fill="x", padx=18, pady=(0, 2))
-
-        # Loader Selection
-        self._field_label(card, "MOD LOADER")
-        self.loader_menu = ctk.CTkOptionMenu(
-            card,
-            variable=self.loader_var,
-            values=["Vanilla", "Fabric", "Forge", "NeoForge"],
-            command=lambda _: (self._update_version_list(), self._update_mods_count()),
-            width=140, height=28, corner_radius=8,
-            fg_color=BG, button_color=CYAN, button_hover_color=CYAN_H,
-            dropdown_fg_color="#0d1218",
-            dropdown_hover_color=CYAN_DIM,
-            text_color=WHITE, font=("Segoe UI", 11),
-            dropdown_font=("Segoe UI", 11)
-        )
-        self.loader_menu.pack(anchor="w", padx=16, pady=(3, 10))
-
-        # Mods section (count + open folder)
-        self._field_label(card, "MODS")
-        self.mods_frame = ctk.CTkFrame(card, fg_color="transparent")
-        self.mods_frame.pack(fill="x", padx=16, pady=(3, 10))
-
-        self.mods_count_label = ctk.CTkLabel(
-            self.mods_frame, text="—",
-            font=("Segoe UI", 10), text_color=MUTED, anchor="w"
-        )
-        self.mods_count_label.pack(side="left")
-
-        self.open_mods_btn = ctk.CTkButton(
-            self.mods_frame, text="Open folder",
-            command=self._open_mods_folder,
-            width=110, height=24,
-            fg_color=BORDER, hover_color=CYAN_DIM,
-            text_color=WHITE,
-            font=("Segoe UI", 10)
-        )
-        self.open_mods_btn.pack(side="right")
-
-        _divider(card)
-
-        # Progress + status
-        self.progress_bar = ctk.CTkProgressBar(
-            card, height=5, corner_radius=4,
-            fg_color=BORDER, progress_color=CYAN
-        )
-        self.progress_bar.set(0)
-        self.progress_bar.pack(fill="x", padx=16, pady=(6, 2))
-
-        self.status_label = ctk.CTkLabel(
-            card, text="Fetching versions…",
-            font=("Segoe UI", 10), text_color=MUTED, anchor="w"
-        )
-        self.status_label.pack(fill="x", padx=18, pady=(2, 12))
-
-        # Play button
-        self.play_button = ctk.CTkButton(
-            card, text="▶   PLAY",
-            command=self._start_launch_thread,
-            fg_color=CYAN, hover_color=CYAN_H,
-            font=("Segoe UI", 13, "bold"),
-            height=40, corner_radius=10
-        )
-        self.play_button.pack(fill="x", padx=16, pady=(0, 16))
-
-        # ── Footer ───────────────────────────────────────────────────────────
-        footer = ctk.CTkFrame(self, fg_color="transparent")
-        footer.pack(fill="x", padx=24, pady=(8, 10))
-        ctk.CTkLabel(
-            footer, text="BillyHz", font=("Segoe UI", 10, "italic"),
-            text_color=CYAN
+        Badge(
+            brand_frame,
+            text="v0.7.0",
+            fg_color=CARD_LIGHT,
+            text_color=MUTED_LIGHT,
+            font_size=9,
+            height=20,
         ).pack(side="left")
-        ctk.CTkLabel(
-            footer, text="Alpha 0.7.0", font=("Segoe UI", 10),
-            text_color=MUTED
-        ).pack(side="right")
 
-    def _field_label(self, parent, text: str):
-        ctk.CTkLabel(
-            parent, text=text,
-            font=("Segoe UI", 9, "bold"), text_color=MUTED, anchor="w"
-        ).pack(fill="x", padx=18, pady=(10, 0))
+        # Center Navigation Tabs
+        nav_frame = tkinter.Frame(self.header, bg=CARD)
+        nav_frame.pack(side="left", expand=True, pady=8)
 
-    # ── Version list ──────────────────────────────────────────────────────────
+        self.nav_tabs: dict[str, NavTabButton] = {}
+        self.nav_tabs["home"] = NavTabButton(
+            nav_frame,
+            text="Inicio",
+            icon="🚀",
+            command=lambda: self.switch_view("home"),
+            is_active=True,
+        )
+        self.nav_tabs["home"].pack(side="left", padx=4)
 
-    def _fetch_versions(self):
+        self.nav_tabs["mods"] = NavTabButton(
+            nav_frame,
+            text="Modrinth & Mods",
+            icon="🧩",
+            command=lambda: self.switch_view("mods"),
+            is_active=False,
+        )
+        self.nav_tabs["mods"].pack(side="left", padx=4)
+
+        self.nav_tabs["settings"] = NavTabButton(
+            nav_frame,
+            text="Ajustes",
+            icon="⚙️",
+            command=lambda: self.switch_view("settings"),
+            is_active=False,
+        )
+        self.nav_tabs["settings"].pack(side="left", padx=4)
+
+        # Header Right Quick Utility Icons
+        right_header = tkinter.Frame(self.header, bg=CARD)
+        right_header.pack(side="right", padx=16, pady=8)
+
+        ctk.CTkButton(
+            right_header,
+            text="📂 .minecraft",
+            command=lambda: self._open_dir(self._game_directory()),
+            width=100,
+            height=30,
+            corner_radius=8,
+            fg_color=CARD_LIGHT,
+            hover_color=CYAN_DIM,
+            text_color=TEXT_MAIN,
+            font=("Segoe UI", 10, "bold"),
+        ).pack(side="left", padx=(0, 6))
+
+        # ── 2. Bottom TLauncher-Style Action Bar ───────────────────────────────
+        self.bottom_bar = BottomBar(self.main_container, launcher=self)
+        self.bottom_bar.pack(side="bottom", fill="x")
+
+        # ── 3. Main Center Views Container ────────────────────────────────────
+        self.views_container = tkinter.Frame(self.main_container, bg=BG)
+        self.views_container.pack(fill="both", expand=True, side="top")
+
+        # Initialize Views
+        self.home_view = HomeView(self.views_container, launcher=self)
+        self.modrinth_view = ModrinthView(self.views_container, launcher=self)
+        self.settings_view = SettingsView(self.views_container, launcher=self)
+
+        self.views: dict[str, ctk.CTkFrame] = {
+            "home": self.home_view,
+            "mods": self.modrinth_view,
+            "settings": self.settings_view,
+        }
+        self.current_view = "home"
+        self.home_view.pack(fill="both", expand=True)
+
+    def switch_view(self, view_name: str):
+        if view_name == self.current_view:
+            return
+
+        for name, btn in self.nav_tabs.items():
+            btn.set_active(name == view_name)
+
+        for v in self.views.values():
+            v.pack_forget()
+
+        self.views[view_name].pack(fill="both", expand=True)
+        self.current_view = view_name
+
+        if view_name == "home":
+            self.home_view.refresh_stats()
+        elif view_name == "mods":
+            self.modrinth_view.update_filter_badge()
+
+    def _open_dir(self, path: str):
+        os.makedirs(path, exist_ok=True)
         try:
-            all_v = minecraft_launcher_lib.utils.get_version_list()
-            self._releases = [v["id"] for v in all_v if v["type"] == "release"]
-            if not self._releases:
-                self._releases = ["No versions found"]
-            self.after(0, self._update_version_list)
-            self.after(0, lambda: self.status_label.configure(text="Ready"))
-        except Exception as e:
-            self.after(0, lambda: self.status_label.configure(
-                text=f"Error fetching versions: {e}"
-            ))
+            if sys.platform == "win32":
+                os.startfile(path)  # type: ignore[attr-defined]
+            elif sys.platform == "darwin":
+                subprocess.run(["open", path])
+            else:
+                subprocess.run(["xdg-open", path])
+        except Exception:
+            pass
+
+    # ── Versions & Loaders ────────────────────────────────────────────────────
+
+    def _refresh_versions(self):
+        """Capture refresh order on Tk's thread, then perform network work off-thread."""
+        self._versions_request_id += 1
+        request_id = self._versions_request_id
+        threading.Thread(target=self._fetch_versions, args=(request_id,), daemon=True).start()
+
+    def _fetch_versions(self, request_id=None):
+        request_id = self._versions_request_id if request_id is None else request_id
+        try:
+            all_versions = minecraft_launcher_lib.utils.get_version_list()
+            releases = [version["id"] for version in all_versions if version["type"] == "release"]
+
+            def apply():
+                if request_id != self._versions_request_id:
+                    return
+                self._releases = releases
+                self._update_version_list()
+
+            self.after(0, apply)
+        except Exception as exc:
+            message = str(exc)
+            self.after(
+                0,
+                lambda: (
+                    self.bottom_bar.status_label.configure(text=f"Error obteniendo versiones: {message}")
+                    if request_id == self._versions_request_id
+                    else None
+                ),
+            )
 
     def _update_version_list(self):
-        """Filters the version dropdown based on the selected mod loader."""
+        """Ignore results from an earlier loader/filter/instance selection."""
+        self._filter_request_id += 1
+        request_id = self._filter_request_id
         loader_name = self.loader_var.get().lower()
-        self.status_label.configure(text=f"Updating {loader_name} versions…")
+        instance = self.settings.get("active_instance_dir") or ""
+        releases = list(self._releases)
+        self.bottom_bar.status_label.configure(text=f"Filtrando versiones para {loader_name.capitalize()}…")
 
         def task():
             try:
-                if loader_name == "vanilla":
-                    versions = self._releases
-                else:
+                versions = releases
+                if loader_name != "vanilla":
                     from minecraft_launcher_lib import mod_loader
-                    ml = mod_loader.get_mod_loader(loader_name)
-                    versions = ml.get_minecraft_versions(True)
 
-                self.after(0, lambda: self._populate_menu(versions))
-                self.after(0, lambda: self.status_label.configure(text="Ready"))
-            except Exception as e:
-                self.after(0, lambda: self.status_label.configure(text=f"Filter Error: {e}"))
+                    supported = mod_loader.get_mod_loader(loader_name).get_minecraft_versions(True)
+                    versions = [version for version in versions if version in supported]
+
+                def apply():
+                    if (
+                        request_id != self._filter_request_id
+                        or self.loader_var.get().lower() != loader_name
+                        or (self.settings.get("active_instance_dir") or "") != instance
+                    ):
+                        return
+                    self._populate_menu(versions)
+                    message = (
+                        "Listo para jugar" if versions else f"No hay versiones compatibles con {loader_name}."
+                    )
+                    if not self._is_launching and self._mc_process is None:
+                        self.bottom_bar.status_label.configure(text=message)
+
+                self.after(0, apply)
+            except Exception as exc:
+                message = str(exc)
+                self.after(
+                    0,
+                    lambda: (
+                        self.bottom_bar.status_label.configure(text=f"Error en filtro: {message}")
+                        if request_id == self._filter_request_id
+                        else None
+                    ),
+                )
 
         threading.Thread(target=task, daemon=True).start()
 
-    def _populate_menu(self, versions):
-        self.version_combo.configure(values=versions)
+    def _populate_menu(self, versions: list[str]):
+        self.bottom_bar.version_combo.configure(values=versions or ["No se encontraron versiones"])
+        if not versions:
+            self.version_var.set("No se encontraron versiones")
         if versions:
-            self.version_combo.set(versions[0])
-            self._check_installed(versions[0])
+            saved = self.settings.get("last_version") or ""
+            chosen = saved if saved in versions else versions[0]
+            self.bottom_bar.version_combo.set(chosen)
+            self._check_installed(chosen)
+
+        active = self.settings.get("active_instance_dir")
+        if active:
+            try:
+                with open(os.path.join(active, ".hexpack.json"), encoding="utf-8") as source:
+                    self.modrinth_view._activate_pack(active, json.load(source))
+            except (OSError, ValueError, KeyError):
+                logger.warning("Active pack metadata could not be restored", exc_info=True)
+
+        if hasattr(self, "home_view"):
+            self.home_view.refresh_stats()
+        if hasattr(self, "modrinth_view"):
+            self.modrinth_view.update_filter_badge()
 
     def _get_installed(self) -> list[str]:
-        vdir = os.path.join(MC_DIR, "versions")
+        vdir = os.path.join(self._game_directory(), "versions")
         if not os.path.isdir(vdir):
             return []
         found = []
         for name in os.listdir(vdir):
-            if (os.path.exists(os.path.join(vdir, name, f"{name}.jar")) and
-                    os.path.exists(os.path.join(vdir, name, f"{name}.json"))):
+            if os.path.exists(os.path.join(vdir, name, f"{name}.jar")) and os.path.exists(
+                os.path.join(vdir, name, f"{name}.json")
+            ):
                 found.append(name)
         return found
 
     def _check_installed(self, version_id: str):
-        if version_id in self._get_installed():
-            self.installed_label.configure(
-                text=f"✔  {version_id} already installed", text_color=SUCCESS
-            )
-        else:
-            self.installed_label.configure(
-                text=f"⬇  Will download on first launch", text_color=WARN
-            )
+        is_installed = version_id in self._get_installed()
+        self.bottom_bar.update_installed_status(is_installed, version_id)
 
     def _sync_mods(self, loader_type: str, mc_version: str):
-        loader_folder = LOADER_FOLDERS.get(loader_type.lower(), loader_type.capitalize())
-        source_dir = os.path.join(MODS_DIR, loader_folder, mc_version)
-        os.makedirs(source_dir, exist_ok=True)
+        """Publish a staged mod set; any failure aborts launch with the old set intact."""
+        from src.hexlauncher.core.filesystem import sync_mods
+        from src.hexlauncher.core.modrinth import safe_path
 
-        mc_mods_dir = os.path.join(MC_DIR, "mods")
-        os.makedirs(mc_mods_dir, exist_ok=True)
+        folder = LOADER_FOLDERS.get(loader_type.lower(), loader_type.capitalize())
+        source_dir = safe_path(MODS_DIR, f"{folder}/{mc_version}")
+        copied = sync_mods(source_dir, os.path.join(MC_DIR, "mods"))
+        return copied, 0
 
-        for item in os.listdir(mc_mods_dir):
-            path = os.path.join(mc_mods_dir, item)
-            if os.path.isfile(path) and path.endswith(".jar"):
-                try: os.remove(path)
-                except Exception: pass
+    def _game_directory(self):
+        """Canonical game directory for the selected instance."""
+        from pathlib import Path
 
-        for item in os.listdir(source_dir):
-            src = os.path.join(source_dir, item)
-            dst = os.path.join(mc_mods_dir, item)
-            if os.path.isfile(src) and src.endswith(".jar"):
-                try: shutil.copy2(src, dst)
-                except Exception: pass
+        active = self.settings.get("active_instance_dir") or ""
+        if not active:
+            return MC_DIR
+        root = Path(BASE_PATH, "HexInstances").resolve()
+        directory = Path(active).resolve()
+        if (
+            directory == root
+            or not directory.is_relative_to(root)
+            or not (directory / ".hexpack.json").is_file()
+        ):
+            raise ValueError("Instancia seleccionada inválida o ausente. Selecciona otra instancia.")
+        return str(directory)
 
     def _mods_folder_for(self, loader: str, version: str) -> str:
-        """Return the mod folder for the given loader+version (creating it)."""
-        if loader == "Vanilla" or version in ("Loading…", "No versions found", ""):
+        from pathlib import Path
+
+        from src.hexlauncher.core.modrinth import safe_path
+
+        if self.settings.get("active_instance_dir"):
+            path = Path(self._game_directory(), "mods")
+            path.mkdir(parents=True, exist_ok=True)
+            return str(path)
+        if loader == "Vanilla" or version in ("Cargando…", "No se encontraron versiones", ""):
             return MODS_DIR
-        loader_folder = LOADER_FOLDERS.get(loader.lower(), loader)
-        path = os.path.join(MODS_DIR, loader_folder, version)
-        os.makedirs(path, exist_ok=True)
-        return path
+        folder = LOADER_FOLDERS.get(loader.lower(), loader)
+        path = safe_path(MODS_DIR, f"{folder}/{version}")
+        path.mkdir(parents=True, exist_ok=True)
+        return str(path)
 
     def _update_mods_count(self):
-        loader = self.loader_var.get()
-        version = self.version_var.get()
-        if loader == "Vanilla" or version in ("Loading…", "No versions found", ""):
-            self.mods_count_label.configure(text="Vanilla — no mods folder")
-            return
-        path = self._mods_folder_for(loader, version)
-        try:
-            count = sum(1 for f in os.listdir(path) if f.lower().endswith(".jar"))
-            self.mods_count_label.configure(text=f"{count} mod{'s' if count != 1 else ''}")
-        except Exception:
-            self.mods_count_label.configure(text="—")
+        if hasattr(self, "home_view"):
+            self.home_view.refresh_stats()
 
     def _open_mods_folder(self):
         loader = self.loader_var.get()
         version = self.version_var.get()
         path = self._mods_folder_for(loader, version)
-        try:
-            if sys.platform == "win32":
-                os.startfile(path)  # type: ignore[attr-defined]
-            elif sys.platform == "darwin":
-                subprocess.run(["open", path])  # type: ignore[unreachable]
-            else:
-                subprocess.run(["xdg-open", path])  # type: ignore[unreachable]
-        except Exception as e:
-            self.status_label.configure(text=f"Could not open folder: {e}")
+        self._open_dir(path)
 
-    # ── JDK ───────────────────────────────────────────────────────────────────
+    # ── JDK Management ────────────────────────────────────────────────────────
 
-    def _download_jdk(self):
-        if os.path.exists(JAVA_BIN):
+    def _download_jdk(self, custom_java=None):
+        from src.hexlauncher.core.jdk import install_jdk
+
+        if custom_java is None:
+            custom_java = self.settings.get("custom_java_path") or ""
+        custom_java = custom_java.strip()
+        if custom_java:
+            if not os.path.isfile(custom_java):
+                raise RuntimeError("El ejecutable Java personalizado no existe.")
             return
-        self.after(0, lambda: self.status_label.configure(text="Downloading Java 21…"))
-        url = (
-            "https://github.com/adoptium/temurin21-binaries/releases/download/"
-            "jdk-21.0.2%2B13/OpenJDK21U-jdk_x64_windows_hotspot_21.0.2_13.zip"
-        )
-        zip_tmp = os.path.join(BASE_PATH, "jdk.zip")
-        r = requests.get(url, stream=True)
-        total = int(r.headers.get("content-length", 0))
-        done = 0
-        with open(zip_tmp, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                f.write(chunk)
-                done += len(chunk)
-                if total:
-                    self.after(0, lambda p=done / total: self.progress_bar.set(p))
 
-        self.after(0, lambda: self.status_label.configure(text="Extracting Java…"))
-        with zipfile.ZipFile(zip_tmp, "r") as z:
-            z.extractall(BASE_PATH)
+        def progress(done, total):
+            self.after(0, lambda value=done / total if total else 0: self.bottom_bar.progress_bar.set(value))
 
-        extracted = [
-            d for d in os.listdir(BASE_PATH)
-            if "jdk-21" in d and os.path.isdir(os.path.join(BASE_PATH, d))
-        ][0]
-        if os.path.exists(JAVA_DIR):
-            shutil.rmtree(JAVA_DIR)
-        shutil.move(os.path.join(BASE_PATH, extracted), JAVA_DIR)
-        os.remove(zip_tmp)
-        self.after(0, lambda: self.progress_bar.set(0))
+        def status(message):
+            self.after(0, lambda: self.bottom_bar.status_label.configure(text=message))
 
-    # ── Launch ───────────────────────────────────────────────────────────────
+        install_jdk(JAVA_DIR, progress, status)
+        self.after(0, lambda: self.bottom_bar.progress_bar.set(0))
 
     def _start_launch_thread(self):
-        user = self.username_input.get().strip()
-        if not user:
-            self.status_label.configure(text="⚠  Enter a username first!")
+        if self._is_launching or self._mc_process is not None or self.modrinth_view._busy:
+            self.bottom_bar.status_label.configure(text="Espera a que termine la operación actual.")
             return
-        version = self.version_var.get()
-        if version in ("Loading…", "No versions found"):
-            self.status_label.configure(text="⚠  Select a valid version.")
+        if not self.bottom_bar._validate_username():
+            self.bottom_bar.status_label.configure(
+                text="⚠ Ingresa un apodo válido (3-16 caracteres alfanuméricos)."
+            )
             return
-        self.play_button.configure(state="disabled")
-        threading.Thread(target=self._launch_game, args=(user, version), daemon=True).start()
 
-    def _launch_game(self, username: str, version: str):
+        user = self.bottom_bar.username_input.get().strip()
+        version = self.version_var.get()
+        if version in ("Cargando…", "No se encontraron versiones", ""):
+            self.bottom_bar.status_label.configure(text="⚠ Selecciona una versión válida.")
+            return
+
+        loader = self.loader_var.get().lower()
+        instance = self.settings.get("active_instance_dir") or ""
+        runtime_options = {
+            "custom_java_path": (self.settings.get("custom_java_path") or "").strip(),
+            "jvm_args": self.settings.get_effective_jvm_args(),
+            "close_on_launch": self.settings.get("close_on_launch"),
+        }
+        self.bottom_bar.set_play_enabled(False)
+        self._is_launching = True
+        self._stop_requested = False
+        threading.Thread(
+            target=self._launch_game, args=(user, version, loader, instance, runtime_options), daemon=True
+        ).start()
+
+    def _launch_game(
+        self, username: str, version: str, selected_loader: str, instance: str = "", runtime_options=None
+    ):
+        error_message = None
         try:
-            self._download_jdk()
-            os.makedirs(MC_DIR, exist_ok=True)
+            game_dir = MC_DIR
+            pack = None
+            if instance:
+                from pathlib import Path
+
+                root = Path(BASE_PATH, "HexInstances").resolve()
+                directory = Path(instance).resolve()
+                if not directory.is_relative_to(root) or directory == root:
+                    raise ValueError("Ruta de instancia inválida.")
+                pack = json.loads((directory / ".hexpack.json").read_text(encoding="utf-8"))
+                deps = pack["dependencies"]
+                version = deps["minecraft"]
+                selected_loader = next(
+                    (
+                        loader
+                        for key, loader in (
+                            ("fabric-loader", "fabric"),
+                            ("forge", "forge"),
+                            ("neoforge", "neoforge"),
+                        )
+                        if key in deps
+                    ),
+                    "vanilla",
+                )
+                game_dir = str(directory)
+            if runtime_options is None:
+                self._download_jdk()
+            else:
+                self._download_jdk(runtime_options["custom_java_path"])
+            os.makedirs(game_dir, exist_ok=True)
 
             def set_status(t):
-                self.after(0, lambda _t=t: self.status_label.configure(text=_t))
+                self.after(0, lambda _t=t: self.bottom_bar.status_label.configure(text=_t))
 
             def set_progress(v):
-                self.after(0, lambda _v=v: self.progress_bar.set(
-                    _v / max(self._max_progress, 1)
-                ))
+                self.after(
+                    0,
+                    lambda _v=v: self.bottom_bar.progress_bar.set(_v / max(self._max_progress, 1)),
+                )
 
             def set_max(v):
                 self._max_progress = v or 1
 
             self._max_progress = 1
-            set_status(f"Installing {version}…")
+            set_status(f"Instalando archivos de Minecraft {version}…")
             minecraft_launcher_lib.install.install_minecraft_version(
-                version, MC_DIR,
-                callback={"setStatus": set_status, "setProgress": set_progress, "setMax": set_max}
+                version,
+                game_dir,
+                callback={"setStatus": set_status, "setProgress": set_progress, "setMax": set_max},
             )
 
             launch_version = version
 
-            selected_loader = self.loader_var.get().lower()
+            # Resolve effective Java binary
+            custom_java = (
+                runtime_options["custom_java_path"]
+                if runtime_options is not None
+                else (self.settings.get("custom_java_path") or "").strip()
+            )
+            effective_java = custom_java if (custom_java and os.path.exists(custom_java)) else JAVA_BIN
+
             if selected_loader != "vanilla":
                 from minecraft_launcher_lib import mod_loader
+
                 try:
                     ml = mod_loader.get_mod_loader(selected_loader)
-                    if ml.is_minecraft_version_supported(version):
-                        set_status(f"Installing {selected_loader.capitalize()}…")
-                        loader_ver = ml.get_latest_loader_version(version)
-                        launch_version = ml.install(
-                            version,
-                            MC_DIR,
-                            loader_version=loader_ver,
-                            callback={"setStatus": set_status, "setProgress": set_progress, "setMax": set_max},
-                            java=JAVA_BIN,
-                        )
-
-                        set_status(f"Syncing mods for {version}…")
-                        self._sync_mods(selected_loader, version)
-                    else:
-                        self.after(0, lambda: self.status_label.configure(
-                            text=f"⚠ {selected_loader.capitalize()} not supported for {version}. Vanilla launch."
-                        ))
-                        import time
-                        time.sleep(1.5)
                 except Exception as e:
-                    self.after(0, lambda: self.status_label.configure(text=f"Mod Loader Error: {e}"))
-                    import time
-                    time.sleep(2)
+                    raise RuntimeError(f"Error cargando loader: {e}") from e
 
-            self.after(0, lambda: self.progress_bar.set(1))
-            set_status(f"Launching {launch_version}…")
+                if not ml.is_minecraft_version_supported(version):
+                    raise RuntimeError(f"{selected_loader.capitalize()} no soporta MC {version}.")
 
-            cmd = minecraft_launcher_lib.command.get_minecraft_command(
-                launch_version, MC_DIR,
-                {
-                    "username": username,
-                    "uuid": str(uuid.uuid4()),
-                    "token": "0",
-                    "executablePath": JAVA_BIN,
-                    "jvmArguments": ["-Xmx4G", "-Xms2G"],
-                }
+                try:
+                    set_status(f"Instalando {selected_loader.capitalize()} para MC {version}…")
+                    if pack:
+                        key = {"fabric": "fabric-loader", "forge": "forge", "neoforge": "neoforge"}[
+                            selected_loader
+                        ]
+                        loader_ver = pack["dependencies"][key]
+                    else:
+                        loader_ver = ml.get_latest_loader_version(version)
+                    launch_version = ml.install(
+                        version,
+                        game_dir,
+                        loader_version=loader_ver,
+                        callback={"setStatus": set_status, "setProgress": set_progress, "setMax": set_max},
+                        java=effective_java,
+                    )
+
+                    set_status(f"Sincronizando mods para {version}…")
+                    copied, failed = (0, 0) if pack else self._sync_mods(selected_loader, version)
+                    if failed > 0:
+                        raise RuntimeError(
+                            f"{failed} mod(s) no pudieron sincronizarse. El juego no se inició."
+                        )
+                except Exception as e:
+                    raise RuntimeError(f"Error en instalación de modloader: {e}") from e
+
+            self.after(0, lambda: self.bottom_bar.progress_bar.set(1))
+            set_status(f"Iniciando {launch_version}…")
+
+            jvm_args = (
+                runtime_options["jvm_args"]
+                if runtime_options is not None
+                else self.settings.get_effective_jvm_args()
             )
 
-            self.after(0, self.withdraw)
-            if sys.platform == "win32":
-                subprocess.run(cmd, creationflags=0x08000000)
-            else:
-                subprocess.run(cmd)  # type: ignore[unreachable]
-            self.after(0, self.deiconify)
+            cmd = minecraft_launcher_lib.command.get_minecraft_command(
+                launch_version,
+                game_dir,
+                {
+                    "username": username,
+                    "uuid": str(
+                        uuid.UUID(bytes=hashlib.md5(f"OfflinePlayer:{username}".encode()).digest(), version=3)
+                    ),
+                    "token": "0",
+                    "executablePath": effective_java,
+                    "jvmArguments": jvm_args,
+                },
+            )
+
+            self._mc_process = subprocess.Popen(
+                cmd,
+                creationflags=0x08000000 if sys.platform == "win32" else 0,
+            )
+
+            close_on_launch = bool(
+                runtime_options["close_on_launch"]
+                if runtime_options is not None
+                else self.settings.get("close_on_launch")
+            )
+            if close_on_launch:
+                self.after(0, self.withdraw)
+
+            # Switch button to STOP state
+            self.after(0, lambda: self.bottom_bar.set_running_state(True))
+            set_status(f"Minecraft {version} en ejecución.")
+
+            try:
+                exit_code = self._mc_process.wait()
+                if exit_code and not getattr(self, "_stop_requested", False):
+                    raise RuntimeError(f"Minecraft terminó con código {exit_code}. Revisa el log del juego.")
+            finally:
+                self._mc_process = None
+                if close_on_launch:
+                    self.after(0, self.deiconify)
+                self.after(0, lambda: self.bottom_bar.set_running_state(False))
 
         except Exception as err:
-            self.after(0, self.deiconify)
-            self.after(0, lambda e=str(err): self.status_label.configure(text=f"Error: {e}"))
+            error_message = str(err)
+            logger.error("Error launching game: %s", err, exc_info=True)
+            self.after(
+                0,
+                lambda e=str(err): self.bottom_bar.status_label.configure(text=f"Error: {e}"),
+            )
         finally:
-            self.after(0, lambda: self.progress_bar.set(0))
-            self.after(0, lambda: self.status_label.configure(text="Ready"))
-            self.after(0, lambda: self.play_button.configure(state="normal"))
+            self._is_launching = False
+            self.after(0, lambda: self.bottom_bar.progress_bar.set(0))
+            self.after(
+                0,
+                lambda message=error_message: self.bottom_bar.status_label.configure(
+                    text=f"Error: {message}" if message else "Listo para jugar"
+                ),
+            )
+            self.after(0, lambda: self.bottom_bar.set_play_enabled(True))
             self.after(0, lambda v=version: self._check_installed(v))
+
+    def _kill_game(self):
+        process = self._mc_process
+        if process is None or process.poll() is not None:
+            return
+        self._stop_requested = True
+        self.bottom_bar.status_label.configure(text="Deteniendo Minecraft…")
+
+        def stop():
+            try:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                logger.error("Failed to stop Minecraft: %s", exc)
+                self.after(
+                    0,
+                    lambda message=str(exc): self.bottom_bar.status_label.configure(
+                        text=f"No se pudo detener Minecraft: {message}"
+                    ),
+                )
+
+        threading.Thread(target=stop, daemon=True).start()
+
+    def _on_close(self):
+        try:
+            self.settings.set("username", self.bottom_bar.username_input.get().strip())
+            self.settings.set("last_version", self.version_var.get())
+            self.settings.set("last_loader", self.loader_var.get())
+            self.settings.set("window_geometry", self.geometry())
+            self.settings.save()
+        except Exception:
+            logger.debug("Failed to persist settings on close", exc_info=True)
+        self.destroy()
+
+    def destroy(self):
+        self._is_destroyed = True
+        if hasattr(self, "_queue_after_id") and self._queue_after_id:
+            try:
+                self.after_cancel(self._queue_after_id)
+            except Exception:
+                pass
+            self._queue_after_id = None
+        super().destroy()
+
+
+def run():
+    """Shared source/frozen entry point, with a hidden offline startup check."""
+    ctk.set_appearance_mode("dark")
+    app = HexLauncher()
+    if "--smoke-test" in sys.argv:
+        app.after_cancel(app._initial_refresh_after_id)
+        app.withdraw()
+        if not os.path.isfile(ICON_NAME):
+            app.destroy()
+            raise RuntimeError("El paquete no incluye el icono Hex.ico.")
+        app.after(100, app.destroy)
+        # CTk's Windows titlebar setup pumps events before entering its loop.
+        # A hidden short-lived smoke window must not destroy itself during that setup.
+        tkinter.Tk.mainloop(app)
+        return
+    app.mainloop()
+
+
+def _relaunch_without_console():
+    """Exit the console parent and run the same script as a windowed process."""
+    if (
+        sys.platform != "win32"
+        or getattr(sys, "frozen", False)
+        or "--smoke-test" in sys.argv
+        or "--hex-windowed" in sys.argv
+        or os.path.basename(sys.executable).lower() == "pythonw.exe"
+    ):
+        return False
+    pythonw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+    executable = pythonw if os.path.isfile(pythonw) else sys.executable
+    subprocess.Popen(
+        [executable, os.path.abspath(__file__), "--hex-windowed", *sys.argv[1:]],
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+        close_fds=True,
+    )
+    return True
 
 
 if __name__ == "__main__":
-    ctk.set_appearance_mode("dark")
-    app = HexLauncher()
-    app.mainloop()
+    if _relaunch_without_console():
+        raise SystemExit(0)
+    run()

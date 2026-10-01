@@ -59,6 +59,48 @@ HexMods/
 └── NeoForge/
 ```
 
+## Launching and settings
+
+HexLauncher runs one Minecraft process at a time. The play button becomes
+**DETENER** while the game is running, including when the username is edited.
+The optional launch setting hides the launcher while Minecraft runs and restores
+it when the process exits.
+
+Settings validate RAM, Java paths and JVM arguments. Configuration is saved
+atomically; invalid input and failed writes are shown in the interface.
+Refreshing version lists runs in the background, and outdated search/version
+responses are discarded when filters change.
+
+## Mods & Modrinth
+
+Open **Modrinth & Mods**, select a loader and Minecraft version, and search for
+**Mods** or **Modpacks**. Mod cards display the icon, author and description.
+Installing a mod also installs its required dependencies into
+`HexMods/<Loader>/<Version>/`. Downloads are verified against SHA-512 and SHA-1
+before replacing files; API and download work runs on background threads.
+Installations maintain a `.hexmods.json` registry and publish files transactionally,
+restoring the previous installation if publication fails. Updating a registered mod
+removes its previous `.jar`, even when the filename changes. Deleting a mod is blocked
+when another registered mod requires it. Manually added `.jar` files remain supported.
+
+Use **Importar .mrpack** to install a local pack, or install a pack from search.
+Packs are staged and published into a new `HexInstances/<id>/` folder only after
+all downloads and overrides succeed. The instance selector switches between
+installed packs and the usual installation. Minecraft and the loader use the
+versions pinned by the pack; pack mods are never replaced by the global library.
+Additional compatible mods install directly into the selected pack's `mods/` folder.
+The usual installation uses `HexMods/<Loader>/<Version>/`; pack additions do not
+modify that shared library. **Mods instalados** lists and removes files from the
+currently selected installation.
+
+Client packs apply `overrides/` followed by `client-overrides/`, skip files marked
+client `unsupported`, and include optional client files. Quilt packs are rejected
+with an explanatory error because HexLauncher currently supports Fabric, Forge
+and NeoForge. Existing instance directories are not overwritten by pack imports.
+
+API reference: [Labrinth v2](https://docs.modrinth.com/api/).
+Pack specification: [Modrinth .mrpack format](https://support.modrinth.com/en/articles/8802351-modrinth-modpack-format-mrpack).
+
 ## 🛠️ Building from source
 
 ```bash
@@ -73,10 +115,30 @@ py -3.14 -m pip install -r requirements.txt
 py -3.14 main.py
 
 # Build standalone .exe
-py -3.14 -m pip install -r requirements-dev.txt
-py -3.14 -m PyInstaller --noconfirm --clean hexlauncher.spec
+py -3.14 -m pip install -r requirements.txt -r requirements-dev.txt
+py -3.14 build.py
 # → dist/HexLauncher.exe
 ```
+
+## Development checks
+
+Install the development dependencies before running the offline checks:
+
+```powershell
+py -3.14 -m pip install -r requirements.txt -r requirements-dev.txt
+py -3.14 -m pytest -q
+py -3.14 -m ruff check .
+py -3.14 -m mypy src/hexlauncher/core src/hexlauncher/utils/settings.py
+```
+
+`main.py` es el único punto de entrada. En Windows arranca un proceso sin consola
+con `pythonw.exe` y termina el proceso inicial. Si lo
+ejecutas desde una terminal existente, esa terminal permanece disponible. Los
+errores se registran en `logs/launcher.log`.
+
+Tests replace API requests and game processes with local fixtures; they do not
+start Minecraft. Run the UI tests on a desktop environment with Tcl/Tk available.
+See [BUILD.md](BUILD.md) for packaging using the shared PyInstaller specification.
 
 ## 🧱 Tech stack
 
@@ -93,7 +155,8 @@ py -3.14 -m PyInstaller --noconfirm --clean hexlauncher.spec
 
 - [ ] Linux & macOS support
 - [ ] Microsoft account authentication
-- [ ] Mod browser (Modrinth / CurseForge integration)
+- [x] Modrinth mod browser, dependencies and modpack installation
+- [ ] CurseForge integration
 - [ ] Auto-updater
 - [ ] Server management
 - [ ] Custom themes

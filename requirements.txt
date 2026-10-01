@@ -5,3 +5,5 @@ customtkinter==5.2.2        # Dark-mode GUI framework (tkinter wrapper)
 darkdetect==0.8.0           # Detects OS dark/light theme (used by customtkinter)
 minecraft-launcher-lib==8.0 # Mojang API wrapper: version list, install, launch commands
 requests==2.34.2            # HTTP client for JDK & asset downloads
+pillow>=10.0.0              # Image processing for skin avatars and UI icons
+psutil>=5.9.0               # System memory detection for RAM allocation
