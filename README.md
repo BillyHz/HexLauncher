@@ -10,6 +10,11 @@
 
 ---
 
+<img width="1000" height="707" alt="image" src="https://github.com/user-attachments/assets/e2b1ed21-3323-4157-90df-70c8b310892f" />
+
+
+---
+
 ## ✨ Features
 
 - 🎮 **One-click Minecraft launch** — pick a version, enter a username, hit PLAY
