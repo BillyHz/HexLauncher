@@ -1,3 +1,3 @@
 """Application version shared by the UI, build and updater."""
 
-VERSION = "0.7.0-beta.1"
+VERSION = "0.8.1"

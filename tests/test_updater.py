@@ -81,14 +81,14 @@ def test_historical_release_tags_keep_prerelease_ordering():
 def test_legacy_prerelease_marked_as_stable_does_not_trigger_update(tag):
     data = release_data()
     data["tag_name"] = tag
-    assert check_update(session=client(Response(data))) is None
+    assert check_update("0.7.0-beta.1", session=client(Response(data))) is None
 
 
 @pytest.mark.parametrize("tag", ["latest", "HexLauncher release", "", None, 42])
 def test_unknown_release_tag_is_ignored_instead_of_breaking_check(tag):
     data = release_data()
     data["tag_name"] = tag
-    assert check_update(session=client(Response(data))) is None
+    assert check_update("0.7.0-beta.1", session=client(Response(data))) is None
 
 
 def test_release_selection_and_no_downgrades():
@@ -102,7 +102,7 @@ def test_release_selection_and_no_downgrades():
 def test_unpublished_and_prerelease_ignored(field):
     data = release_data()
     data[field] = True
-    assert check_update(session=client(Response(data))) is None
+    assert check_update("0.7.0-beta.1", session=client(Response(data))) is None
 
 
 @pytest.mark.parametrize(
@@ -124,7 +124,7 @@ def test_invalid_asset_refused(field, value):
     data = release_data()
     data["assets"][0][field] = value
     with pytest.raises(ValueError):
-        check_update(session=client(Response(data)))
+        check_update("0.7.0-beta.1", session=client(Response(data)))
 
 
 def test_missing_release_is_not_an_error():
@@ -136,7 +136,7 @@ def test_missing_release_is_not_an_error():
 def test_prerelease_tag_is_ignored_even_if_marked_stable():
     data = release_data()
     data["tag_name"] = "v0.8.0-beta.1"
-    assert check_update(session=client(Response(data))) is None
+    assert check_update("0.7.0-beta.1", session=client(Response(data))) is None
 
 
 def test_download_and_replacement_leave_user_files_intact(tmp_path):

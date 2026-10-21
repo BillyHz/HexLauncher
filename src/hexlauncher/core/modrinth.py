@@ -17,7 +17,8 @@ from urllib.parse import quote, urlparse
 import requests
 
 API_BASE = "https://api.modrinth.com/v2"
-USER_AGENT = "BillyHz/HexLauncher/0.7.0-beta.1 (https://github.com/BillyHz/HexLauncher)"
+from src.hexlauncher.version import VERSION
+USER_AGENT = f"BillyHz/HexLauncher/{VERSION} (https://github.com/BillyHz/HexLauncher)"
 _MOD_LOCK = threading.RLock()
 _MOD_REGISTRY = ".hexmods.json"
 

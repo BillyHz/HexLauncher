@@ -26,7 +26,8 @@ from src.hexlauncher.core.playit import agent_tunnels, minecraft_tunnel
 from src.hexlauncher.core.server_loaders import install_modded_server, launch_arguments
 
 logger = logging.getLogger(__name__)
-USER_AGENT = "BillyHz/HexLauncher/0.7.0 (https://github.com/BillyHz/HexLauncher)"
+from src.hexlauncher.version import VERSION
+USER_AGENT = f"BillyHz/HexLauncher/{VERSION} (https://github.com/BillyHz/HexLauncher)"
 MANIFEST_URL = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"
 PAPER_API = "https://fill.papermc.io/v3"
 FABRIC_API = "https://meta.fabricmc.net/v2"
