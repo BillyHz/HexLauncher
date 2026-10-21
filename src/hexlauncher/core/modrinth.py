@@ -84,10 +84,10 @@ class ModrinthClient:
                 raise ModrinthError("Modrinth devolvió JSON inválido.") from exc
 
     def search_mods(self, query, loader, game_version, limit=20, offset=0, *, project_type="mod"):
-        if project_type not in ("mod", "modpack") or not 1 <= limit <= 100 or offset < 0:
+        if project_type not in ("mod", "modpack", "resourcepack") or not 1 <= limit <= 100 or offset < 0:
             raise ValueError("Tipo, límite u offset inválido.")
         facets = [[f"project_type:{project_type}"]]
-        if loader and loader.lower() != "vanilla":
+        if project_type != "resourcepack" and loader and loader.lower() != "vanilla":
             facets.append([f"categories:{loader.lower()}"])
         if game_version:
             facets.append([f"versions:{game_version}"])
@@ -173,6 +173,7 @@ class ModrinthClient:
         *,
         expected_hash_sha1=None,
         expected_size=None,
+        max_size=None,
     ):
         """Verify a temporary download before atomically replacing the destination."""
         for value, length in ((expected_hash_sha512, 128), (expected_hash_sha1, 40)):
@@ -186,11 +187,15 @@ class ModrinthClient:
             with os.fdopen(fd, "wb") as output:
                 with self._get(url, stream=True) as response:
                     total = int(response.headers.get("content-length", 0))
+                    if max_size is not None and total > max_size:
+                        raise ModrinthError("La descarga supera el límite de tamaño permitido.")
                     if progress_callback:
                         progress_callback(0, total)
                     for chunk in response.iter_content(chunk_size=256 * 1024):
                         if not chunk:
                             continue
+                        if max_size is not None and done + len(chunk) > max_size:
+                            raise ModrinthError("La descarga supera el límite de tamaño permitido.")
                         output.write(chunk)
                         sha512.update(chunk)
                         sha1.update(chunk)
@@ -313,6 +318,52 @@ class ModrinthClient:
     def install_mod(self, project_id, loader, game_version, mods_dir, progress_callback=None):
         with _MOD_LOCK:
             return self._install_mod(project_id, loader, game_version, mods_dir, progress_callback)
+
+    def import_local_mods(self, sources, mods_dir, progress_callback=None):
+        """Validate the whole selection before publishing local jars together."""
+        with _MOD_LOCK:
+            destination = Path(mods_dir)
+            destination.mkdir(parents=True, exist_ok=True)
+            sources = [Path(source) for source in sources]
+            projects = self.read_installed_mods(destination)
+            names = {path.name.casefold() for path in destination.iterdir()}
+            names.update(record["filename"].casefold() for record in projects.values())
+            for source in sources:
+                if source.suffix.lower() != ".jar" or not source.is_file():
+                    raise ModrinthError("Selecciona archivos de mods en formato .jar.")
+                safe_path(destination, source.name)
+                if source.name.casefold() in names:
+                    raise ModrinthError(
+                        f"Ya existe {source.name}. Elimina el anterior desde Mods instalados antes de añadirlo."
+                    )
+                names.add(source.name.casefold())
+            with tempfile.TemporaryDirectory(prefix=".hex-mods-", dir=destination.parent) as staging:
+                total = 0
+                for index, source in enumerate(sources, 1):
+                    staged = Path(staging, source.name)
+                    with source.open("rb") as stream, staged.open("xb") as output:
+                        size = 0
+                        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                            size += len(chunk)
+                            total += len(chunk)
+                            if size > 512 * 1024**2 or total > 2 * 1024**3:
+                                raise ModrinthError("La selección supera el límite de tamaño para mods.")
+                            output.write(chunk)
+                    try:
+                        with zipfile.ZipFile(staged) as archive:
+                            if (
+                                not archive.infolist()
+                                or sum(item.file_size for item in archive.infolist()) > 2 * 1024**3
+                                or archive.testzip() is not None
+                            ):
+                                raise zipfile.BadZipFile()
+                    except (zipfile.BadZipFile, RuntimeError) as exc:
+                        raise ModrinthError(f"El archivo {source.name} no es un JAR válido o está dañado.") from exc
+                    if progress_callback:
+                        progress_callback(index, len(sources))
+                if sources:
+                    self._commit_mods(destination, staging, [], projects)
+            return [source.name for source in sources]
 
     def _install_mod(self, project_id, loader, game_version, mods_dir, progress_callback=None):
         versions = self.get_project_versions(project_id, loader, game_version)

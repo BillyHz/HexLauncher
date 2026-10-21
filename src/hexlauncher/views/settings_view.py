@@ -7,7 +7,7 @@ import tkinter.filedialog
 import customtkinter as ctk
 import psutil
 
-from src.hexlauncher.i18n import refresh_language, tr
+from src.hexlauncher.i18n import tr
 from src.hexlauncher.palette import (
     BG,
     BORDER,
@@ -23,6 +23,7 @@ from src.hexlauncher.palette import (
     WARN,
     WHITE,
 )
+from src.hexlauncher.views.update_panel import UpdatePanel
 from src.hexlauncher.widgets import Badge
 
 
@@ -57,6 +58,9 @@ class SettingsView(ctk.CTkFrame):
             text_color=TEXT_MAIN,
         )
         self.language_switch.pack(side="right", padx=16, pady=14)
+
+        self.update_panel = UpdatePanel(scroll, self.launcher)
+        self.update_panel.pack(fill="x", pady=(0, 12))
 
         # ── 1. RAM Allocation Card ────────────────────────────────────────────
         ram_card = ctk.CTkFrame(scroll, fg_color=CARD, border_color=BORDER, border_width=1, corner_radius=12)
@@ -264,17 +268,16 @@ class SettingsView(ctk.CTkFrame):
         self.ram_val_label.configure(text=f"{val_gb} GB")
         if val_gb < 3:
             self.ram_note.configure(
-                text="⚠ Asignación baja: Minecraft moderno puede presentar tirones.", text_color=WARN
+                text=tr("⚠ Asignación baja: Minecraft moderno puede presentar tirones."), text_color=WARN
             )
         elif 4 <= val_gb <= 8:
             self.ram_note.configure(
-                text="✓ Rango ideal para rendimiento fluido y modpacks estándar.", text_color=SUCCESS
+                text=tr("✓ Rango ideal para rendimiento fluido y modpacks estándar."), text_color=SUCCESS
             )
         else:
             self.ram_note.configure(
-                text="Alto: Asegúrate de tener suficiente RAM libre en Windows.", text_color=MUTED_LIGHT
+                text=tr("Alto: Asegúrate de tener suficiente RAM libre en Windows."), text_color=MUTED_LIGHT
             )
-        refresh_language(self)
 
     def _change_language(self):
         if not self.launcher.change_language(self.language_var.get()):

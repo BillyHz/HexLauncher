@@ -27,6 +27,7 @@ MC_DIR = os.path.join(BASE_PATH, "HexFiles")
 MODS_DIR = os.path.join(BASE_PATH, "HexMods")
 JAVA_DIR = os.path.join(BASE_PATH, "HexJDK")
 JAVA_BIN = os.path.join(JAVA_DIR, "bin", "java.exe")
+SERVER_DIR = os.path.join(BASE_PATH, "HexServer")
 ICON_NAME = resource_path("Hex.ico")
 
 # Ensure HexMods exists with subfolders for organization

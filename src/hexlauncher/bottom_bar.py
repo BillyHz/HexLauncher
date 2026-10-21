@@ -69,6 +69,23 @@ class BottomBar(ctk.CTkFrame):
         )
         self.status_label.pack(fill="x")
 
+        self.pack_controls = ctk.CTkFrame(status_row, fg_color="transparent")
+        self.pack_notice = ctk.CTkLabel(
+            self.pack_controls, text="", text_color=WARN, font=("Segoe UI", 10), anchor="w"
+        )
+        self.pack_notice.pack(side="left", fill="x", expand=True)
+        self.standard_instance_button = ctk.CTkButton(
+            self.pack_controls,
+            text=tr("Usar instalación habitual"),
+            height=24,
+            width=170,
+            fg_color=CARD_LIGHT,
+            hover_color=CYAN_DIM,
+            text_color=CYAN,
+            command=self._use_standard_installation,
+        )
+        self.standard_instance_button.pack(side="right")
+
         # ── 2. Main Controls Bar (Horizontal Dock) ────────────────────────────
         dock = tkinter.Frame(self, bg=CARD)
         dock.pack(fill="x", padx=16, pady=(4, 12))
@@ -176,6 +193,7 @@ class BottomBar(ctk.CTkFrame):
             values=[tr("Cargando…")],
             command=self._on_version_changed,
             height=32,
+            on_disabled_click=self._explain_pinned_version,
         )
         self.version_combo.pack(side="left", fill="x", expand=True, padx=(0, 6))
 
@@ -214,6 +232,30 @@ class BottomBar(ctk.CTkFrame):
         self.play_button.pack(side="right")
 
         self._validate_username()
+
+    def show_pinned_version(self, version=None):
+        if version:
+            self.pack_notice.configure(
+                text=tr("Modpack activo · Minecraft {version} fijo").format(version=version)
+            )
+            self.pack_controls.pack(fill="x", pady=(2, 0))
+        else:
+            self.pack_controls.pack_forget()
+
+    def _explain_pinned_version(self):
+        self.status_label.configure(
+            text=tr("El modpack fija esta versión. Usa instalación habitual para cambiarla.")
+        )
+
+    def _use_standard_installation(self):
+        if (
+            self.launcher._is_launching
+            or self.launcher._mc_process is not None
+            or self.launcher.modrinth_view._busy
+        ):
+            self.status_label.configure(text=tr("Espera a que termine la operación actual."))
+            return
+        self.launcher.modrinth_view._select_instance(tr("Instalación habitual"))
 
     def _on_loader_changed(self, loader_value: str):
         self.launcher._update_version_list()

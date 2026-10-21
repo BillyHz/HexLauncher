@@ -10,14 +10,23 @@ Features:
 
 from __future__ import annotations
 
+# ruff: noqa: E402 -- dispatch the update helper before GUI/data-directory imports
+import sys
+
+# The copied updater must run before importing Tk or creating application data.
+if __name__ == "__main__" and "--apply-update" in sys.argv:
+    from src.hexlauncher.core.updater import apply_update
+
+    raise SystemExit(apply_update(sys.argv[sys.argv.index("--apply-update") + 1 :]))
+
 import hashlib
 import json
 import logging
 import os
 import queue
 import subprocess
-import sys
 import threading
+import time
 import tkinter
 import uuid
 
@@ -46,8 +55,11 @@ from src.hexlauncher.paths import (
     MODS_DIR,
 )
 from src.hexlauncher.utils.settings import Settings
+from src.hexlauncher.version import VERSION
 from src.hexlauncher.views.home_view import HomeView
 from src.hexlauncher.views.modrinth_view import ModrinthView
+from src.hexlauncher.views.resource_packs_view import ResourcePacksView
+from src.hexlauncher.views.server_view import ServerView
 from src.hexlauncher.views.settings_view import SettingsView
 from src.hexlauncher.widgets import Badge, NavTabButton
 
@@ -69,7 +81,9 @@ class HexLauncher(ctk.CTk):
     def __init__(self):
         super().__init__()
         self._is_destroyed = False
+        self._updating = False
         self._queue_after_id = None
+        self._close_after_id = None
         self.queue = queue.Queue()
         self.settings = Settings(BASE_PATH)
         set_language(self.settings.get("language"))
@@ -115,10 +129,14 @@ class HexLauncher(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._queue_after_id = super().after(50, self._process_queue)
         self._initial_refresh_after_id = self.after(100, self._refresh_versions)
+        if "--smoke-test" not in sys.argv:
+            self.after(2000, lambda: self.settings_view.update_panel.check(automatic=True))
 
     def _process_queue(self, event=None):
         if getattr(self, "_is_destroyed", False):
             return
+        # Yield to input and painting even during a burst of download callbacks.
+        deadline = time.perf_counter() + 0.008
         try:
             if not self.winfo_exists():
                 return
@@ -126,16 +144,18 @@ class HexLauncher(ctk.CTk):
                 callback = self.queue.get_nowait()
                 try:
                     callback()
-                    refresh_language(self.main_container)
                 except Exception as e:
                     logger.error("Error executing queued callback: %s", e)
+                if self._is_destroyed or time.perf_counter() >= deadline:
+                    break
         except queue.Empty:
             pass
         except Exception:
             pass
 
         if not self._is_destroyed:
-            self._queue_after_id = super().after(50, self._process_queue)
+            delay = 10 if not self.queue.empty() else 50
+            self._queue_after_id = super().after(delay, self._process_queue)
 
     def after(self, delay, callback, *args):
         if getattr(self, "_is_destroyed", False):
@@ -172,7 +192,7 @@ class HexLauncher(ctk.CTk):
 
         Badge(
             brand_frame,
-            text="v0.7.0-beta.1",
+            text=f"v{VERSION}",
             fg_color=CARD_LIGHT,
             text_color=MUTED_LIGHT,
             font_size=9,
@@ -190,21 +210,40 @@ class HexLauncher(ctk.CTk):
             icon="🚀",
             command=lambda: self.switch_view("home"),
             is_active=True,
+            width=90,
         )
         self.nav_tabs["home"].pack(side="left", padx=4)
 
         self.nav_tabs["mods"] = NavTabButton(
             nav_frame,
-            text="Modrinth & Mods",
+            text=tr("Mods y modpacks"),
             icon="🧩",
             command=lambda: self.switch_view("mods"),
             is_active=False,
+            width=150,
         )
         self.nav_tabs["mods"].pack(side="left", padx=4)
+
+        self.nav_tabs["textures"] = NavTabButton(
+            nav_frame, text=tr("Texturas"), icon="▧", width=105,
+            command=lambda: self.switch_view("textures"),
+        )
+        self.nav_tabs["textures"].pack(side="left", padx=4)
+
+        self.nav_tabs["server"] = NavTabButton(
+            nav_frame,
+            text=tr("Servidor Local"),
+            width=150,
+            icon="🌐",
+            command=lambda: self.switch_view("server"),
+            is_active=False,
+        )
+        self.nav_tabs["server"].pack(side="left", padx=4)
 
         self.nav_tabs["settings"] = NavTabButton(
             nav_frame,
             text="Ajustes",
+            width=95,
             icon="⚙️",
             command=lambda: self.switch_view("settings"),
             is_active=False,
@@ -235,38 +274,44 @@ class HexLauncher(ctk.CTk):
         # ── 3. Main Center Views Container ────────────────────────────────────
         self.views_container = tkinter.Frame(self.main_container, bg=BG)
         self.views_container.pack(fill="both", expand=True, side="top")
+        self.views_container.grid_rowconfigure(0, weight=1)
+        self.views_container.grid_columnconfigure(0, weight=1)
+        self.views_container.grid_propagate(False)
 
         # Initialize Views
         self.home_view = HomeView(self.views_container, launcher=self)
         self.modrinth_view = ModrinthView(self.views_container, launcher=self)
         self.settings_view = SettingsView(self.views_container, launcher=self)
+        self.server_view = ServerView(self.views_container, launcher=self)
+        self.resource_packs_view = ResourcePacksView(self.views_container, launcher=self)
 
-        self.views: dict[str, ctk.CTkFrame] = {
+        self.views: dict[str, ctk.CTkFrame | ctk.CTkScrollableFrame] = {
             "home": self.home_view,
             "mods": self.modrinth_view,
             "settings": self.settings_view,
+            "server": self.server_view,
+            "textures": self.resource_packs_view,
         }
         self.current_view = "home"
-        self.home_view.pack(fill="both", expand=True)
+        # Keep the pages laid out. Raising one preserves scroll position, focus
+        # state and search results without unmapping/rebuilding every page.
+        for view in self.views.values():
+            view.grid(row=0, column=0, sticky="nsew")
+        self.home_view.tkraise()
+        self.home_view.refresh_stats()
 
     def switch_view(self, view_name: str):
-        if view_name == self.current_view:
+        if view_name == self.current_view or view_name not in self.views:
             return
 
-        for name, btn in self.nav_tabs.items():
-            btn.set_active(name == view_name)
-
-        for v in self.views.values():
-            v.pack_forget()
-
-        self.views[view_name].pack(fill="both", expand=True)
+        self.nav_tabs[self.current_view].set_active(False)
+        self.nav_tabs[view_name].set_active(True)
+        # Hidden entries must not continue receiving keyboard input.
+        self.nav_tabs[view_name].focus_set()
+        self.views[view_name].tkraise()
         self.current_view = view_name
-
-        if view_name == "home":
-            self.home_view.refresh_stats()
-        elif view_name == "mods":
-            self.modrinth_view.update_filter_badge()
-        refresh_language(self.main_container)
+        # Context is refreshed by version/instance/content changes, and the
+        # complete translation pass runs only at startup or a language change.
 
     def change_language(self, language: str) -> bool:
         previous = self.settings.get("language")
@@ -278,6 +323,8 @@ class HexLauncher(ctk.CTk):
         self.settings_view.language_var.set(language)
         self.modrinth_view.refresh_instances()
         self.version_var.set(translate_displayed(self.version_var.get()))
+        self.home_view.refresh_stats()
+        self.resource_packs_view.refresh_context()
         refresh_language(self.main_container)
         return True
 
@@ -311,6 +358,7 @@ class HexLauncher(ctk.CTk):
                 if request_id != self._versions_request_id:
                     return
                 self._releases = releases
+                self.server_view.update_versions(releases)
                 self._update_version_list()
 
             self.after(0, apply)
@@ -319,7 +367,7 @@ class HexLauncher(ctk.CTk):
             self.after(
                 0,
                 lambda: (
-                    self.bottom_bar.status_label.configure(text=f"Error obteniendo versiones: {message}")
+                    self.bottom_bar.status_label.configure(text=tr("Error obteniendo versiones: {message}").format(message=message))
                     if request_id == self._versions_request_id
                     else None
                 ),
@@ -357,7 +405,7 @@ class HexLauncher(ctk.CTk):
                         "Listo para jugar" if versions else f"No hay versiones compatibles con {loader_name}."
                     )
                     if not self._is_launching and self._mc_process is None:
-                        self.bottom_bar.status_label.configure(text=message)
+                        self.bottom_bar.status_label.configure(text=translate_displayed(message))
 
                 self.after(0, apply)
             except Exception as exc:
@@ -365,7 +413,7 @@ class HexLauncher(ctk.CTk):
                 self.after(
                     0,
                     lambda: (
-                        self.bottom_bar.status_label.configure(text=f"Error en filtro: {message}")
+                        self.bottom_bar.status_label.configure(text=tr("Error en filtro: {message}").format(message=message))
                         if request_id == self._filter_request_id
                         else None
                     ),
@@ -395,6 +443,9 @@ class HexLauncher(ctk.CTk):
             self.home_view.refresh_stats()
         if hasattr(self, "modrinth_view"):
             self.modrinth_view.update_filter_badge()
+
+        if hasattr(self, "resource_packs_view"):
+            self.resource_packs_view.refresh_context()
 
     def _get_installed(self) -> list[str]:
         vdir = os.path.join(self._game_directory(), "versions")
@@ -449,7 +500,11 @@ class HexLauncher(ctk.CTk):
             path.mkdir(parents=True, exist_ok=True)
             return str(path)
         if loader == "Vanilla" or version in (
-            "Cargando…", "Loading…", "No se encontraron versiones", "No versions found", ""
+            "Cargando…",
+            "Loading…",
+            "No se encontraron versiones",
+            "No versions found",
+            "",
         ):
             return MODS_DIR
         folder = LOADER_FOLDERS.get(loader.lower(), loader)
@@ -460,6 +515,8 @@ class HexLauncher(ctk.CTk):
     def _update_mods_count(self):
         if hasattr(self, "home_view"):
             self.home_view.refresh_stats()
+        if hasattr(self, "resource_packs_view"):
+            self.resource_packs_view.refresh_context()
 
     def _open_mods_folder(self):
         loader = self.loader_var.get()
@@ -484,13 +541,13 @@ class HexLauncher(ctk.CTk):
             self.after(0, lambda value=done / total if total else 0: self.bottom_bar.progress_bar.set(value))
 
         def status(message):
-            self.after(0, lambda: self.bottom_bar.status_label.configure(text=message))
+            self.after(0, lambda: self.bottom_bar.status_label.configure(text=translate_displayed(message)))
 
         install_jdk(JAVA_DIR, progress, status)
         self.after(0, lambda: self.bottom_bar.progress_bar.set(0))
 
     def _start_launch_thread(self):
-        if self._is_launching or self._mc_process is not None or self.modrinth_view._busy:
+        if self._updating or self._is_launching or self._mc_process is not None or self.modrinth_view._busy:
             self.bottom_bar.status_label.configure(text=tr("Espera a que termine la operación actual."))
             return
         if not self.bottom_bar._validate_username():
@@ -556,7 +613,7 @@ class HexLauncher(ctk.CTk):
             os.makedirs(game_dir, exist_ok=True)
 
             def set_status(t):
-                self.after(0, lambda _t=t: self.bottom_bar.status_label.configure(text=_t))
+                self.after(0, lambda _t=t: self.bottom_bar.status_label.configure(text=translate_displayed(_t)))
 
             def set_progress(v):
                 self.after(
@@ -677,7 +734,7 @@ class HexLauncher(ctk.CTk):
             logger.error("Error launching game: %s", err, exc_info=True)
             self.after(
                 0,
-                lambda e=str(err): self.bottom_bar.status_label.configure(text=f"Error: {e}"),
+                lambda e=str(err): self.bottom_bar.status_label.configure(text=tr("Error: {message}").format(message=e)),
             )
         finally:
             self._is_launching = False
@@ -685,7 +742,7 @@ class HexLauncher(ctk.CTk):
             self.after(
                 0,
                 lambda message=error_message: self.bottom_bar.status_label.configure(
-                    text=f"Error: {message}" if message else "Listo para jugar"
+                    text=tr("Error: {message}").format(message=message) if message else tr("Listo para jugar")
                 ),
             )
             self.after(0, lambda: self.bottom_bar.set_play_enabled(True))
@@ -711,13 +768,28 @@ class HexLauncher(ctk.CTk):
                 self.after(
                     0,
                     lambda message=str(exc): self.bottom_bar.status_label.configure(
-                        text=f"No se pudo detener Minecraft: {message}"
+                        text=tr("No se pudo detener Minecraft: {message}").format(message=message)
                     ),
                 )
 
         threading.Thread(target=stop, daemon=True).start()
 
     def _on_close(self):
+        if self._is_destroyed:
+            return
+        # Keep Tk and its callback queue alive until workers have published files
+        # and cleared their busy state. Never interrupt a transaction on exit.
+        if self._close_after_id is not None:
+            self.after_cancel(self._close_after_id)
+            self._close_after_id = None
+        if (
+            self.modrinth_view._busy
+            or (self._is_launching and self._mc_process is None)
+            or self.settings_view.update_panel._busy
+        ):
+            self.bottom_bar.status_label.configure(text=tr("Espera a que termine la operación actual."))
+            self._close_after_id = self.after(100, self._on_close)
+            return
         try:
             self.settings.set("username", self.bottom_bar.username_input.get().strip())
             self.settings.set("last_version", self.version_var.get())
@@ -726,10 +798,16 @@ class HexLauncher(ctk.CTk):
             self.settings.save()
         except Exception:
             logger.debug("Failed to persist settings on close", exc_info=True)
+        if self.server_view.active or self.server_view._closing:
+            self.server_view.shutdown(self.destroy)
+            return
         self.destroy()
 
     def destroy(self):
         self._is_destroyed = True
+        if self._close_after_id is not None:
+            self.after_cancel(self._close_after_id)
+            self._close_after_id = None
         if hasattr(self, "_queue_after_id") and self._queue_after_id:
             try:
                 self.after_cancel(self._queue_after_id)
@@ -743,6 +821,17 @@ def run():
     """Shared source/frozen entry point, with a hidden offline startup check."""
     ctk.set_appearance_mode("dark")
     app = HexLauncher()
+    if getattr(sys, "frozen", False) and "--smoke-test" not in sys.argv:
+        from pathlib import Path
+
+        from src.hexlauncher.core.updater import cleanup_updates
+
+        def cleanup(attempts=10):
+            # The helper may still be exiting when the new window opens.
+            if cleanup_updates(Path(sys.executable)) and attempts > 1:
+                app.after(2000, lambda: cleanup(attempts - 1))
+
+        app.after(2000, cleanup)
     if "--smoke-test" in sys.argv:
         app.after_cancel(app._initial_refresh_after_id)
         app.withdraw()

@@ -106,9 +106,11 @@ def test_thread_after_queue_never_calls_tk_on_worker(app_root):
 
 def test_filters_clear_old_install_cards(app_root):
     view = app_root.modrinth_view
+    view.update_filter_badge()
     view._render_mod_card({"title": "Old", "project_id": "old"}, "1.21", "Fabric")
     assert view.results_scroll.winfo_children()
     generation = view._search_generation
+    app_root.version_var.set("1.20.4" if app_root.version_var.get() != "1.20.4" else "1.21")
     view.update_filter_badge()
     assert view._search_generation == generation + 1
     assert not view.results_scroll.winfo_children()

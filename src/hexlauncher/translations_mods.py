@@ -1,6 +1,20 @@
 """English translations for the Modrinth browser."""
 
 EN = {
+    "Añadir modpack (.mrpack)…": "Add modpack (.mrpack)…",
+    "Busca por nombre o añade archivos. Los mods deben coincidir con el cargador y la versión.":
+        "Search by name or add files. Mods must match your loader and Minecraft version.",
+    "Instalación de destino": "Destination installation",
+    "✓ {count} archivo(s) añadido(s). Pulsa Jugar para cargar tus mods.":
+        "✓ {count} file(s) added. Press Play to load your mods.",
+    "Añadir mods: selecciona uno o varios archivos .jar": "Add mods: select one or more .jar files",
+    "Aún no hay mods. Busca uno por nombre o usa Añadir archivos .jar.":
+        "No mods yet. Search by name or use Add .jar files.",
+    "Selecciona archivos de mods en formato .jar.": "Select mod files in .jar format.",
+    "Ya existe {name}. Elimina el anterior desde Mods instalados antes de añadirlo.":
+        "{name} already exists. Remove the previous file from Installed mods before adding it.",
+    "La selección supera el límite de tamaño para mods.": "The selection exceeds the mod size limit.",
+    "El archivo {name} no es un JAR válido o está dañado.": "{name} is not a valid JAR or is damaged.",
     "Importar .mrpack": "Import .mrpack",
     "Mods instalados": "Installed mods",
     "Filtro: —": "Filter: —",

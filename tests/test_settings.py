@@ -24,6 +24,57 @@ def test_defaults_when_file_missing(tmp_settings_path):
     assert s.get("window_geometry") == DEFAULTS["window_geometry"]
 
 
+@pytest.mark.parametrize("language", ["es", "en"])
+def test_installation_language_is_initial_default(tmp_path, language):
+    (tmp_path / "installation.ini").write_text(f"[HexLauncher]\nlanguage={language}\n", encoding="utf-8")
+    settings = Settings(str(tmp_path))
+    assert settings.get("language") == language
+    assert settings.get("installer_language") == language
+
+
+def test_previous_install_without_language_metadata_adopts_setup_language(tmp_path):
+    (tmp_path / "settings.json").write_text(json.dumps({"language": "en", "username": "Steve", "ram_gb": 8}))
+    (tmp_path / "installation.ini").write_text("[HexLauncher]\nlanguage=es\n")
+    settings = Settings(str(tmp_path))
+    assert settings.get("language") == "es"
+    assert settings.get("username") == "Steve"
+    assert settings.get("ram_gb") == 8
+
+
+def test_user_language_choice_survives_later_launches_and_same_language_reinstall(tmp_path):
+    marker = tmp_path / "installation.ini"
+    marker.write_text("[HexLauncher]\nlanguage=es\n")
+    settings = Settings(str(tmp_path))
+    settings.set("language", "en")
+    assert settings.save()
+    marker.write_text("[HexLauncher]\nlanguage=es\n")
+    loaded = Settings(str(tmp_path))
+    assert loaded.get("language") == "en"
+
+
+def test_selecting_another_setup_language_updates_language_without_resetting_settings(tmp_path):
+    marker = tmp_path / "installation.ini"
+    marker.write_text("[HexLauncher]\nlanguage=en\n")
+    settings = Settings(str(tmp_path))
+    settings.set("username", "Alex")
+    settings.set("ram_gb", 8)
+    assert settings.save()
+    marker.write_text("[HexLauncher]\nlanguage=es\n")
+    loaded = Settings(str(tmp_path))
+    assert loaded.get("language") == "es"
+    assert loaded.get("username") == "Alex"
+    assert loaded.get("ram_gb") == 8
+
+
+@pytest.mark.parametrize("contents", ["invalid ini", "[HexLauncher]\nlanguage=fr\n", "[Other]\nvalue=es\n"])
+def test_invalid_installation_metadata_keeps_saved_language(tmp_path, contents):
+    settings = Settings(str(tmp_path))
+    settings.set("language", "es")
+    assert settings.save()
+    (tmp_path / "installation.ini").write_text(contents)
+    assert Settings(str(tmp_path)).get("language") == "es"
+
+
 def test_save_and_load_roundtrip(tmp_settings_path):
     base = os.path.dirname(tmp_settings_path)
     s1 = Settings(base)

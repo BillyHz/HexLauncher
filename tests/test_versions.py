@@ -29,10 +29,11 @@ def test_old_release_refresh_ignored(monkeypatch):
 
 
 def test_latest_refresh_applies_on_ui_callback(monkeypatch):
-    queued, applied = [], []
+    queued, applied, server_versions = [], [], []
     launcher = SimpleNamespace(
         _versions_request_id=2,
         _releases=[],
+        server_view=SimpleNamespace(update_versions=lambda versions: server_versions.append(versions)),
         after=lambda delay, callback: queued.append(callback),
         _update_version_list=lambda: applied.append(True),
     )
@@ -46,6 +47,7 @@ def test_latest_refresh_applies_on_ui_callback(monkeypatch):
     queued[0]()
     assert launcher._releases == ["1.21"]
     assert applied == [True]
+    assert server_versions == [["1.21"]]
 
 
 def test_loader_response_cannot_override_newer_selection(monkeypatch):

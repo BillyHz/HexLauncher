@@ -143,11 +143,21 @@ $RECYCLE.BIN/
 
 # Local-only / personal build files (kept out of public repo)
 ANALISIS.md
-sign.bat
 test_size.py
 make_icon.py
 build.bat
-ANTIVIRUS.md
 migration/
 HexInstances/
+HexServer/
+.hex-server-install-*/
 settings.json
+/.hex-update-*/
+
+# Local debug / automation scripts and temporary data
+test_resize.py
+_*.ps1
+config/
+showdown/
+*.png
+!assets/**
+.github/

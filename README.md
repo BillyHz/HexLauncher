@@ -10,9 +10,7 @@
 
 ---
 
-
 <img width="1000" height="711" alt="image" src="https://github.com/user-attachments/assets/4f0dc7d8-ee6f-4918-ae45-acdcde66c5e1" />
-
 
 ---
 
@@ -27,31 +25,45 @@
 
 ## 📥 Download
 
-Grab the latest release from the [**Releases**](../../releases) page.
+Download **HexLauncher-Setup-v…-windows-x64.exe** from the [**Releases**](../../releases)
+page for the guided installation. A portable ZIP is also available.
 
-> **Windows Defender note:** the `.exe` is built with PyInstaller and may
-> trigger a SmartScreen warning on first run. See
-> [this guide](https://github.com/BillyHz/HexLauncher/wiki/Antivirus) for
-> how to add an exclusion.
+> **Windows security note:** a new or unsigned executable may show a SmartScreen
+> warning. See [Windows signing and security](ANTIVIRUS.md) for publisher signing,
+> application reputation and reporting incorrect antivirus detections.
 
 ## 🚀 Quick start
 
-1. Download `HexLauncher.exe` from the latest release
-2. Put it in any folder (e.g. `C:\Games\HexLauncher\`)
-3. Run it
-4. On first launch, the app creates:
+1. Download and run **HexLauncher-Setup-v…-windows-x64.exe**.
+2. Select the installer language and installation folder. The launcher adopts that
+   language on first launch. The default folder is `%LOCALAPPDATA%\Programs\HexLauncher`.
+3. Leave **Create a desktop shortcut** checked, or uncheck it if you prefer.
+4. Finish installation and launch HexLauncher from its shortcut or the Start menu.
+   The executable and all game data stay inside the chosen folder, including:
    - `HexFiles/` — Minecraft installation
    - `HexMods/` — your mod library
    - `HexJDK/` — bundled Java runtime (auto-downloaded)
-5. Enter a username, pick a version, hit **PLAY**
+5. Enter a username, pick a version, hit **PLAY**.
+
+For an existing portable installation, select its current folder in Setup to keep
+using the same worlds, mods and settings. Reinstalling replaces the application
+files; uninstalling removes the launcher and shortcuts while preserving player data.
+The portable ZIP can still be extracted into a dedicated folder and run directly.
+You can change the launcher language later in **Settings**. Selecting a different
+language during a later Setup run applies that new language without resetting other settings.
 
 ## 🧩 Adding mods
 
-1. Select a mod loader in the dropdown (Fabric, Forge, or NeoForge)
-2. Pick a Minecraft version
-3. Click **Open folder** in the MODS section
-4. Drop your `.jar` mods into the opened folder
-5. Hit **PLAY** — the loader is installed and your mods are loaded
+1. In **Mods & modpacks**, choose Fabric, Forge or NeoForge. Select your Minecraft
+   version in the bottom bar.
+2. Search by name, or use **Add .jar files…** to select
+   one or several downloaded mods. Use files compatible with your loader and version.
+3. Check **Installed mods**, then press **PLAY** to load them.
+
+The destination selector in the section follows your selected installation or modpack.
+Local imports validate every JAR before publishing the selection together. Existing
+filenames are preserved; remove an old file from **Installed mods** before replacing it.
+The mods folder shortcut remains available for manual file management.
 
 Mods are organized by loader and version:
 ```
@@ -64,6 +76,26 @@ HexMods/
 ├── Forge/
 └── NeoForge/
 ```
+
+## Texture / resource packs
+
+Open the separate **Textures** tab to search Modrinth by name, or leave the search
+empty and press **Search** to explore. Results match the Minecraft version selected
+in the bottom bar, independently of the mod loader. Choose the destination installation
+in the tab and click **Install**. Downloads are checked against the published hashes,
+size and ZIP metadata before being copied into that installation's `resourcepacks/`.
+**My textures** lists its installed ZIPs. **Add local ZIP…** also imports downloaded packs.
+
+Local resource-pack ZIPs must include `pack.mcmeta` at their root and are copied, without extraction,
+into the selected installation's `resourcepacks/` folder. Existing packs are
+preserved; duplicate names get a numbered suffix. The installed ZIPs appear in
+**My textures**, and **Open textures folder** opens that
+same directory. An active modpack uses its own folder; the usual installation
+uses `HexFiles/resourcepacks/`.
+
+Enable the pack inside Minecraft under **Options > Resource Packs**. Choose a
+pack compatible with your Minecraft version. Imports run in the background and
+require Minecraft and other installation/update operations to be idle.
 
 ## Launching and settings
 
@@ -126,6 +158,64 @@ py -3.14 build.py
 # → dist/HexLauncher.exe
 ```
 
+## Local server with Playit.gg
+
+Open **Local Server**, choose a Minecraft version and **Paper** (recommended),
+**Fabric**, **Vanilla**, **Forge**, or **NeoForge**, then allocate 2–8 GB of RAM. The safe limit keeps at
+least 2 GB available for Windows and the client and caps the server at half the
+system RAM. Server files, worlds, and Playit credentials stay in the ignored
+`HexServer/` directory, separate from client instances.
+
+**Start Local Server** downloads the server and the official Playit agent and
+starts both without console windows. Starting accepts the Minecraft EULA. The
+initial properties use port 25565, loopback binding, `online-mode=false`, and
+`motd=Servidor de HexLauncher`; subsequent starts preserve your settings/world.
+
+On first use, select **Link Playit.gg Tunnel** and create a **Minecraft Java**
+tunnel in the Playit dashboard pointing to `127.0.0.1:25565`. **Configure Tunnel**
+opens that dashboard. Once Playit reports this mapping, **Copy Address** copies
+the address for friends. You can join locally using `localhost:25565`.
+
+**Stop Server** sends `stop` and waits for world saving. Closing the launcher
+also waits for preparation/stop without blocking the interface. If Java fails
+to respond within 60 seconds, the manager logs the forced shutdown fallback.
+The console is collapsible and keeps a bounded log history.
+
+Paper downloads use the official [Fill v3 API](https://docs.papermc.io/misc/downloads-service/)
+and stable builds only, with SHA-256 verification. Vanilla uses Mojang's
+published SHA-1. Fabric's generated launcher endpoint does not publish a hash;
+the download uses official HTTPS and JAR manifest/CRC validation. The internal
+Java 21 runtime supports versions requiring Java 17–21; incompatible versions
+are rejected before downloading a server. To change an existing server's version
+or type, back up and move `HexServer/` first; existing worlds are never migrated
+automatically.
+
+The integration pins the official standalone [Playit v0.17.1](https://github.com/playit-cloud/playit-agent/releases/tag/v0.17.1)
+and verifies its published SHA-256. Playit's newer daemon has a different
+lifecycle; it is not interchangeable with the stdout-based agent used here.
+
+Forge and NeoForge use their official Maven installers with published checksums.
+The installer runs in a temporary directory with `--installServer`; the manager
+launches Java using the generated `win_args.txt` instead of executing `.bat`
+scripts. Installer output appears in the console and installation can be
+cancelled when closing the launcher. Compatible server mods belong in
+`HexServer/mods`; players need matching loader/mod versions. **Server Folder**
+opens the server directory.
+
+## Automatic updates and Windows signing
+
+The Windows executable checks stable GitHub Releases on startup. In **Settings**,
+use **Check for updates** and **Update and restart**, or disable startup checks.
+Downloads require GitHub's SHA-256 digest and are installed after the launcher
+closes. Minecraft and the local server must be stopped first. User data stays in
+place and the previous executable is kept for recovery. See [BUILD.md](BUILD.md)
+for the release asset requirements.
+
+Trusted code signing with timestamps is supported by `build.py --sign`.
+SmartScreen warnings can still appear until reputation develops; an EV certificate
+does not guarantee an immediate bypass. See [ANTIVIRUS.md](ANTIVIRUS.md) for the
+signing workflow and Microsoft Store/MSIX option.
+
 ## Development checks
 
 The interface defaults to English. Use the **EN / ES** switch in **Settings**
@@ -166,8 +256,8 @@ See [BUILD.md](BUILD.md) for packaging using the shared PyInstaller specificatio
 - [ ] Microsoft account authentication
 - [x] Modrinth mod browser, dependencies and modpack installation
 - [ ] CurseForge integration
-- [ ] Auto-updater
-- [ ] Server management
+- [x] Auto-updater for stable Windows releases
+- [x] Local server management with Playit.gg
 - [ ] Custom themes
 
 ## 🤝 Contributing

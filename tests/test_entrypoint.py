@@ -64,3 +64,29 @@ def test_normal_entrypoint_uses_custom_loop(monkeypatch):
     monkeypatch.setattr(main.sys, "argv", ["launcher"])
     main.run()
     assert events == ["loop"]
+
+
+def test_frozen_startup_retries_cleanup_after_helper_exits(monkeypatch):
+    from src.hexlauncher.core import updater
+
+    callbacks, attempts = [], []
+    app = SimpleNamespace(
+        after=lambda delay, callback: callbacks.append(callback),
+        mainloop=lambda: None,
+    )
+
+    def cleanup(path):
+        attempts.append(path)
+        return len(attempts) == 1
+
+    monkeypatch.setattr(main, "HexLauncher", lambda: app)
+    monkeypatch.setattr(main.sys, "argv", ["launcher"])
+    monkeypatch.setattr(main.sys, "frozen", True, raising=False)
+    monkeypatch.setattr(updater, "cleanup_updates", cleanup)
+    main.run()
+    assert not attempts
+    callbacks.pop(0)()
+    assert len(callbacks) == 1
+    callbacks.pop(0)()
+    assert len(attempts) == 2
+    assert not callbacks

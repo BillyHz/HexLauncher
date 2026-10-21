@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import configparser
 import copy
 import json
 import logging
@@ -12,7 +13,12 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 DEFAULTS: dict[str, Any] = {
+    "auto_check_updates": True,
     "language": "en",
+    "installer_language": "",
+    "server_ram_gb": 4,
+    "server_loader": "paper",
+    "server_version": "",
     "username": "",
     "last_version": "",
     "last_loader": "Vanilla",
@@ -78,8 +84,14 @@ def _valid(key: str, value: Any) -> bool:
         return False
     if key == "ram_gb":
         return 1 <= value <= 32
+    if key == "server_ram_gb":
+        return 2 <= value <= 8
+    if key == "server_loader":
+        return value in {"paper", "fabric", "vanilla", "forge", "neoforge"}
     if key == "language":
         return value in {"en", "es"}
+    if key == "installer_language":
+        return value in {"", "en", "es"}
     if key == "last_loader":
         return value in {"Vanilla", "Fabric", "Forge", "NeoForge"}
     if key == "window_geometry":
@@ -114,6 +126,28 @@ class Settings:
             pass
         except (OSError, ValueError, UnicodeError):
             logger.warning("Unable to read settings; using defaults", exc_info=True)
+        # Apply the installer's language once when first adopting it or when the
+        # installer language changes. Once saved, a player's later UI preference
+        # wins on subsequent launches/reinstalls in the same installer language.
+        installed_language = self._installed_language()
+        if installed_language:
+            if self.data["installer_language"] != installed_language:
+                self.data["language"] = installed_language
+            self.data["installer_language"] = installed_language
+
+    def _installed_language(self) -> str:
+        path = os.path.join(os.path.dirname(self.path), "installation.ini")
+        config = configparser.ConfigParser(interpolation=None)
+        try:
+            with open(path, encoding="utf-8-sig") as stream:
+                config.read_file(stream)
+            language = config.get("HexLauncher", "language", fallback="")
+            return language if language in {"en", "es"} else ""
+        except FileNotFoundError:
+            return ""
+        except (OSError, ValueError, UnicodeError, configparser.Error):
+            logger.warning("Unable to read installer language; using saved/default preference", exc_info=True)
+            return ""
 
     def save(self) -> bool:
         """Replace the saved file only after a complete, flushed write."""

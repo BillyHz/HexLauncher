@@ -9,8 +9,37 @@ from functools import lru_cache
 
 from src.hexlauncher.translations_home import EN as HOME
 from src.hexlauncher.translations_mods import EN as MODS
+from src.hexlauncher.translations_server import EN as SERVER
 
 EN = {
+    "Añadir texturas": "Add textures",
+    "Carpeta de texturas": "Textures folder",
+    "Añadir pack de texturas": "Add resource pack",
+    "Importando pack de texturas...": "Importing resource pack...",
+    "Texturas añadidas: {name}. Actívalas en Opciones > Paquetes de recursos.":
+        "Textures added: {name}. Enable them in Options > Resource Packs.",
+    "Selecciona un pack de texturas en formato ZIP.": "Select a resource pack in ZIP format.",
+    "El pack supera el límite de 512 MB.": "The pack exceeds the 512 MB limit.",
+    "El contenido del pack es demasiado grande.": "The pack contents are too large.",
+    "El archivo pack.mcmeta es demasiado grande.": "The pack.mcmeta file is too large.",
+    "El pack.mcmeta no contiene una definición de pack válida.":
+        "pack.mcmeta contains no valid pack definition.",
+    "El ZIP del pack está dañado.": "The pack ZIP is damaged.",
+    "No se pudo encontrar un nombre disponible para el pack.":
+        "Could not find an available name for the pack.",
+    "ZIP inválido: el pack debe incluir pack.mcmeta en la raíz.":
+        "Invalid ZIP: the pack must contain pack.mcmeta at its root.",
+    "Actualizaciones": "Updates",
+    "Buscar actualizaciones al iniciar": "Check for updates on startup",
+    "Disponible en el ejecutable de Windows.": "Available in the Windows executable.",
+    "Buscar actualizaciones": "Check for updates",
+    "Actualizar y reiniciar": "Update and restart",
+    "Buscando actualizaciones...": "Checking for updates...",
+    "Version disponible: {version}": "Version available: {version}",
+    "No hay una version estable mas reciente.": "No newer stable version is available.",
+    "Error de actualizacion: {message}": "Update error: {message}",
+    "Deten Minecraft y el servidor antes de actualizar.": "Stop Minecraft and the server before updating.",
+    "Descargando actualizacion: {percent}%": "Downloading update: {percent}%",
     "Inicio": "Home",
     "🚀  Inicio": "🚀  Home",
     "⚙️  Ajustes": "⚙️  Settings",
@@ -80,13 +109,13 @@ def set_language(language: str) -> None:
 def tr(text: str) -> str:
     if _language == "es":
         return text
-    return EN.get(text, HOME.get(text, MODS.get(text, text)))
+    return EN.get(text, HOME.get(text, MODS.get(text, SERVER.get(text, text))))
 
 
 @lru_cache(maxsize=1024)
 def translate_displayed(text: str) -> str:
     """Translate literal or formatted catalog text in either direction."""
-    catalog = EN | HOME | MODS
+    catalog = EN | HOME | MODS | SERVER
     catalog |= {spanish.upper(): english.upper() for spanish, english in catalog.items()}
     for spanish, english in catalog.items():
         source, target = (spanish, english) if _language == "en" else (english, spanish)

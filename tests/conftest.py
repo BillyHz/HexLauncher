@@ -31,7 +31,7 @@ def app_root(tmp_path_factory):
     import main
     from main import HexLauncher
     from src.hexlauncher.utils.settings import Settings
-    from src.hexlauncher.views import modrinth_view
+    from src.hexlauncher.views import modrinth_view, server_view
     from src.hexlauncher.widgets import AvatarWidget
 
     _setup_tcl()
@@ -43,6 +43,8 @@ def app_root(tmp_path_factory):
     patch.setattr(main, "MODS_DIR", str(temporary / "mods"))
     patch.setattr(main, "BASE_PATH", str(temporary))
     patch.setattr(modrinth_view, "BASE_PATH", str(temporary))
+    patch.setattr(server_view, "SERVER_DIR", str(temporary / "server"))
+    patch.setattr(server_view, "JAVA_DIR", str(temporary / "java"))
     patch.setattr(HexLauncher, "_fetch_versions", lambda self, *args: None)
     patch.setattr(AvatarWidget, "load_avatar", lambda self, username: None)
     root = None

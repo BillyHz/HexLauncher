@@ -248,9 +248,11 @@ class VersionSelector(ctk.CTkOptionMenu):
         command: Callable[[str], None] | None = None,
         width: int = 170,
         height: int = 32,
+        on_disabled_click: Callable[[], None] | None = None,
         **kwargs,
     ):
         self._user_command = command
+        self._on_disabled_click = on_disabled_click
         super().__init__(
             parent,
             variable=variable,
@@ -271,6 +273,10 @@ class VersionSelector(ctk.CTkOptionMenu):
         self._active_dropdown: CTkScrollableDropdown | None = None
 
     def _open_dropdown_menu(self):
+        if self.cget("state") == "disabled":
+            if self._on_disabled_click:
+                self._on_disabled_click()
+            return
         if self._active_dropdown and self._active_dropdown.winfo_exists():
             self._active_dropdown.destroy()
             self._active_dropdown = None
@@ -299,6 +305,13 @@ class VersionSelector(ctk.CTkOptionMenu):
 
     def toggle_dropdown(self):
         self._open_dropdown_menu()
+
+    def _clicked(self, event=0):
+        # CTk's default handler silently ignores disabled option menus.
+        if self.cget("state") == "disabled":
+            self._open_dropdown_menu()
+        else:
+            super()._clicked(event)
 
     def configure(self, require_redraw=False, **kwargs):
         if "command" in kwargs:
@@ -416,6 +429,44 @@ class StatCard(ctk.CTkFrame):
             self.icon_label.configure(text_color=accent)
 
 
+class ResponsiveScrollableFrame(ctk.CTkScrollableFrame):
+    """Coalesce scrollbar updates outside Tk's layout callbacks.
+
+    CTk 5.2.2's scrollbar.set() draws synchronously and calls update_idletasks().
+    Calling it from Canvas's yscrollcommand recursively enters layout while
+    result cards are being added/removed, starving input events on Windows.
+    """
+
+    def __init__(self, master, **kwargs):
+        self._scrollbar_after_id = None
+        self._pending_scroll = None
+        super().__init__(master, **kwargs)
+        # This is intentionally scoped to our scrollbar's canvas, not Tk or
+        # CTk globally. Its normal event loop paints the canvas on the next
+        # frame; CTk's forced synchronous flush re-enters every hidden page's
+        # layout as well. Keep this adapter covered when upgrading CTk 5.2.2.
+        self._scrollbar._canvas.update_idletasks = lambda: None
+        option = "xscrollcommand" if self._orientation == "horizontal" else "yscrollcommand"
+        self._parent_canvas.configure(**{option: self._queue_scrollbar})
+
+    def _queue_scrollbar(self, start, end):
+        self._pending_scroll = (float(start), float(end))
+        if self._scrollbar_after_id is None:
+            self._scrollbar_after_id = self.after(16, self._flush_scrollbar)
+
+    def _flush_scrollbar(self):
+        self._scrollbar_after_id = None
+        values = self._pending_scroll
+        if values is not None and values != self._scrollbar.get():
+            self._scrollbar.set(*values)
+
+    def destroy(self):
+        if self._scrollbar_after_id is not None:
+            self.after_cancel(self._scrollbar_after_id)
+            self._scrollbar_after_id = None
+        super().destroy()
+
+
 class NavTabButton(ctk.CTkButton):
     """Top navigation tab button with active pill indicator."""
 
@@ -435,24 +486,24 @@ class NavTabButton(ctk.CTkButton):
             command=command,
             height=34,
             corner_radius=8,
-            font=("Segoe UI", 12, "bold" if is_active else "normal"),
+            font=("Segoe UI", 12, "bold"),
             fg_color=CYAN_GLOW if is_active else "transparent",
             text_color=CYAN if is_active else MUTED_LIGHT,
             hover_color=CARD_LIGHT,
-            border_width=1 if is_active else 0,
+            border_width=1,
             border_color=BORDER_FOCUS if is_active else CARD,
             **kwargs,
         )
         self.is_active = is_active
 
     def set_active(self, active: bool):
+        if self.is_active == active:
+            return
         self.is_active = active
         self.configure(
             fg_color=CYAN_GLOW if active else "transparent",
             text_color=CYAN if active else MUTED_LIGHT,
-            border_width=1 if active else 0,
             border_color=BORDER_FOCUS if active else CARD,
-            font=("Segoe UI", 12, "bold" if active else "normal"),
         )
 
 
