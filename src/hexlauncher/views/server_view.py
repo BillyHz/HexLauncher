@@ -405,8 +405,17 @@ class ServerView(ctk.CTkFrame):
 
     def copy_address(self):
         if self._public_address:
+            address = self._public_address
+            if ":" not in address:
+                port = resolve_minecraft_srv_port(address)
+                if port:
+                    address = f"{address}:{port}"
+                    self._public_address = address
+                    self.address_label.configure(
+                        text=tr("Tu IP pública para amigos: {address}").format(address=address)
+                    )
             self.clipboard_clear()
-            self.clipboard_append(self._public_address)
+            self.clipboard_append(address)
             self._status(tr("IP copiada."))
 
     def open_claim(self):

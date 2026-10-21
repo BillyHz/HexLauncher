@@ -22,7 +22,7 @@ import psutil
 import requests
 
 from src.hexlauncher.core.jdk import install_jdk
-from src.hexlauncher.core.playit import agent_tunnels, minecraft_tunnel
+from src.hexlauncher.core.playit import agent_tunnels, minecraft_tunnel, resolve_minecraft_srv_port
 from src.hexlauncher.core.server_loaders import install_modded_server, launch_arguments
 
 logger = logging.getLogger(__name__)
@@ -318,7 +318,12 @@ class MinecraftServerManager:
             return
         address = ADDRESS.search(line.split("=>", 1)[0])
         if address and (not address.group(2) or 0 < int(address.group(2)) <= 65535):
-            self._notify("address", address.group(0))
+            addr_str = address.group(0)
+            if ":" not in addr_str:
+                port = resolve_minecraft_srv_port(addr_str)
+                if port:
+                    addr_str = f"{addr_str}:{port}"
+            self._notify("address", addr_str)
 
     def _read_output(self, process, source, generation):
         try:
@@ -362,6 +367,10 @@ class MinecraftServerManager:
         self._last_tunnel_lookup = now
         try:
             address, disabled = minecraft_tunnel(agent_tunnels(self.base_dir / "playit.toml", self.http))
+            if address and ":" not in address:
+                port = resolve_minecraft_srv_port(address)
+                if port:
+                    address = f"{address}:{port}"
         except (OSError, ValueError, RuntimeError, requests.RequestException):
             # Never log the credential or an HTTP request object with its headers.
             self._log("[Playit] Could not refresh tunnel metadata; retrying later.")

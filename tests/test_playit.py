@@ -105,3 +105,11 @@ def test_lookup_reports_disabled_tunnel_and_throttles_repeated_logs(tmp_path, mo
     assert len(calls) == 1
     assert len(messages) == 1 and messages[0][0] == "status"
     assert "desactivado" in messages[0][1]
+
+
+def test_resolve_minecraft_srv_port():
+    from src.hexlauncher.core.playit import resolve_minecraft_srv_port
+    assert resolve_minecraft_srv_port("") is None
+    assert resolve_minecraft_srv_port("invalid:123") is None
+    assert resolve_minecraft_srv_port(None) is None
+    assert resolve_minecraft_srv_port("rails-slips.tun.ply.gg") == 4878
